@@ -11,4 +11,5 @@
 - `APP_VERSION` è definita in `index.html`. Alla data dell'import era `1.4`.
 - Chiavi `localStorage`: `STORAGE_KEY`, `GLOBAL_PRICES_KEY`, `PRICE_LIBRARIES_KEY`, `ACTIVE_PRICE_LIBRARY_KEY`, `PERMANENT_CUSTOM_WORKS_KEY`, `CATALOG_HIDDEN_KEY` (`az_flipping_catalog_hidden_v1`), `ARTISAN_KEY` (`az_flipping_artisans_v1`). Ogni nuovo dato persistente va aggiunto anche al backup e all'import.
 - Funzioni chiave: `blankProject`, `getWorks(includeHidden)`, `findWork`, `getProjectPrice`, `calculateProjectTotals`, `lockProjectPrices`, `hideWorkInProject`, `importBackup`, `quoteUseInProject`.
+- Salvataggi: usa sempre `safeSetItem` (mai `localStorage.setItem` diretto), così se la memoria è piena compare l'avviso. Limite indicativo circa 5 MB (`STORAGE_LIMIT_CHARS`); planimetria e foto sono base64 dentro il progetto e finiscono nel backup.
 - Dopo ogni modifica lancia tutti i test in `test/` (vedi README). Devono passare tutti, compreso il controllo "nessun errore JS".

@@ -18,7 +18,7 @@ I test sono script Playwright che aprono `index.html` in Chromium headless.
 
 ```bash
 export NODE_PATH=$(npm root -g)   # se playwright è installato globalmente
-for t in t0 t1 t1b t2 t3; do node test/$t.js; done
+for t in t0 t1 t1b t2 t3 t6; do node test/$t.js; done
 ```
 
 | File | Cosa verifica |
@@ -28,5 +28,6 @@ for t in t0 t1 t1b t2 t3; do node test/$t.js; done
 | `test/t1b.js` | backup/import con prezzi bloccati e voci nascoste |
 | `test/t2.js` | voci 2.11, 4.12, 15.8, 15.9 (prezzi, info, affidabilità), libreria prezzi |
 | `test/t3.js` | rubrica artigiani, preventivi usati nel progetto, doppia copertura, backup rubrica |
+| `test/t6.js` | memoria piena: avviso di salvataggio fallito, indicatore dello spazio, backup con planimetria e riepilogo |
 
 Per provare un altro file: `APP=/percorso/file.html node test/t1.js`.

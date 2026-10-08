@@ -31,6 +31,7 @@ for f in test/t*.js; do node "$f"; done
 | `test/t3.js` | rubrica artigiani, preventivi usati nel progetto, doppia copertura, backup rubrica |
 | `test/t4.js` | imposte della società: scenari IVA, IRES, IRAP, dividendi, caso in perdita, vecchio campo plusvalenza, import di vecchi backup |
 | `test/t5.js` | preventivo o artigiano eliminato mentre è usato nei progetti: elenco dei progetti, scelta se togliere le copie, "usato in" |
+| `test/t6.js` | memoria piena: avviso di salvataggio fallito, indicatore dello spazio, backup con planimetria e riepilogo |
 | `test/t7.js` | import da AZ Annunci Analyzer (formati 1.5, "Andrea AI", 0.6 minimale): sola lettura, "usa questo valore" con conferma, foto escluse, file sbagliati e testo malevolo; dati di prova in `test/fixtures/` |
 
 Per provare un altro file: `APP=/percorso/file.html node test/t1.js`.

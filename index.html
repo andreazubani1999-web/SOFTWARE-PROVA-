@@ -1860,6 +1860,12 @@ canvas{
 
       </div>
 
+      <div
+        id="storageUsage"
+        class="small"
+        style="margin-top:10px">
+      </div>
+
     </div>
 
     <div class="panel">
@@ -4267,11 +4273,24 @@ function toast(text){
    LOCAL STORAGE
 ============================================================ */
 
+/* Limite indicativo del localStorage: circa 5 milioni di caratteri per sito
+   (Safari/iPhone; Chrome è simile). Non esiste un modo standard per leggerlo. */
+const STORAGE_LIMIT_CHARS = 5*1024*1024;
+
+let storageSaveFailed = false;
+
 function safeSetItem(key,value){
 
   try{
 
     localStorage.setItem(key,value);
+
+    if(storageSaveFailed){
+      storageSaveFailed=false;
+      renderStorageWarning();
+    }
+
+    scheduleStorageUsage();
 
     return true;
 
@@ -4282,9 +4301,162 @@ function safeSetItem(key,value){
       error
     );
 
+    storageSaveFailed=true;
+
+    renderStorageWarning();
+
+    scheduleStorageUsage();
+
     return false;
 
   }
+
+}
+
+/* ============================================================
+   SPAZIO DI MEMORIA E AVVISO DI SALVATAGGIO FALLITO
+============================================================ */
+
+function formatMegabytes(chars){
+
+  return (chars/1024/1024)
+    .toFixed(chars<1024*1024 ? 2 : 1)
+    .replace(".",",")+" MB";
+
+}
+
+function storageUsageInfo(){
+
+  let total=0;
+
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i)||"";
+      total+=key.length+(localStorage.getItem(key)||"").length;
+    }
+  }catch(error){}
+
+  let plans=0;
+  let photos=0;
+  let planCount=0;
+  let photoCount=0;
+  let measuredWithoutPlan=0;
+
+  (typeof appData!=="undefined" ? appData.projects||[] : []).forEach(project=>{
+    if(project.planImage){
+      planCount++;
+      plans+=String(project.planImage).length;
+    }else if((project.rooms||[]).length||(project.distances||[]).length){
+      measuredWithoutPlan++;
+    }
+    (project.photos||[]).forEach(photo=>{
+      photoCount++;
+      photos+=String(photo?.data||"").length;
+    });
+  });
+
+  return{
+    total,
+    plans,
+    photos,
+    planCount,
+    photoCount,
+    measuredWithoutPlan,
+    percent:Math.round(total/STORAGE_LIMIT_CHARS*100)
+  };
+
+}
+
+let lastBackupSummary="";
+
+/* Il calcolo legge tutta la memoria: lo rimando per non rallentare la digitazione */
+let storageUsageTimer=null;
+
+function scheduleStorageUsage(){
+
+  clearTimeout(storageUsageTimer);
+
+  storageUsageTimer=
+    setTimeout(
+      renderStorageUsage,
+      400
+    );
+
+}
+
+window.addEventListener(
+  "load",
+  ()=>renderStorageUsage()
+);
+
+function renderStorageUsage(){
+
+  const box=
+    document.getElementById("storageUsage");
+
+  if(!box){
+    return;
+  }
+
+  const info=
+    storageUsageInfo();
+
+  const color=
+    storageSaveFailed||info.percent>=90
+      ? "#ff6b6b"
+      : info.percent>=70
+        ? "#ffcc66"
+        : "";
+
+  box.innerHTML=`
+    <div ${color?`style="color:${color}"`:""}>
+      Memoria usata dal software: <strong>${formatMegabytes(info.total)}</strong>
+      su circa 5 MB (${info.percent}%).
+      Planimetrie ${formatMegabytes(info.plans)} (${info.planCount}),
+      foto ${formatMegabytes(info.photos)} (${info.photoCount}).
+    </div>
+    ${
+      storageSaveFailed
+        ? `<div style="color:#ff6b6b"><strong>L'ultimo salvataggio non è riuscito:</strong>
+            i dati da salvare non entrano nella memoria. Esporta un backup e
+            togli foto o planimetrie da progetti vecchi.</div>`
+        : info.percent>=70
+          ? `<div>Quando la memoria è piena il browser non salva più: esporta un backup e
+              togli foto dai progetti archiviati.</div>`
+          : ``
+    }
+    ${lastBackupSummary?`<div>${lastBackupSummary}</div>`:``}
+  `;
+
+}
+
+function renderStorageWarning(){
+
+  let bar=
+    document.getElementById("storageWarning");
+
+  if(!storageSaveFailed){
+    if(bar){
+      bar.remove();
+    }
+    return;
+  }
+
+  if(!bar){
+    bar=document.createElement("div");
+    bar.id="storageWarning";
+    bar.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:10000;background:#b3261e;color:#fff;padding:12px 16px;font-size:15px;line-height:1.4;box-shadow:0 -4px 16px rgba(0,0,0,.4)";
+    document.body.appendChild(bar);
+  }
+
+  bar.innerHTML=`
+    <strong>⚠️ Memoria del browser piena: le ultime modifiche NON sono state salvate.</strong>
+    Se ricarichi la pagina le perdi. Esporta subito un backup, poi libera spazio
+    (foto o planimetrie di progetti vecchi).
+    <div style="margin-top:8px">
+      <button class="btn yellow" onclick="exportBackup()">Esporta backup ora</button>
+    </div>
+  `;
 
 }
 
@@ -6462,6 +6634,19 @@ function exportBackup(){
       {type:"application/json"}
     );
 
+  const info=
+    storageUsageInfo();
+
+  lastBackupSummary=
+    `Ultimo backup esportato: ${(appData.projects||[]).length} progetti, `+
+    `${info.planCount} planimetrie e ${info.photoCount} foto incluse, `+
+    `${formatMegabytes(blob.size)}.`+
+    (
+      info.measuredWithoutPlan
+        ? ` Attenzione: ${info.measuredWithoutPlan} progetto/i con misure ma senza immagine della planimetria salvata.`
+        : ``
+    );
+
   const url=
     URL.createObjectURL(blob);
 
@@ -6481,8 +6666,10 @@ function exportBackup(){
 
   URL.revokeObjectURL(url);
 
+  renderStorageUsage();
+
   toast(
-    "Backup esportato"
+    `Backup esportato: ${info.planCount} planimetrie e ${info.photoCount} foto incluse`
   );
 
 }
@@ -20918,14 +21105,10 @@ function loadCatalogHidden(){
 
 function saveCatalogHidden(){
 
-  try{
-
-    localStorage.setItem(
-      CATALOG_HIDDEN_KEY,
-      JSON.stringify(catalogHiddenWorks)
-    );
-
-  }catch(e){}
+  safeSetItem(
+    CATALOG_HIDDEN_KEY,
+    JSON.stringify(catalogHiddenWorks)
+  );
 
 }
 
@@ -21282,7 +21465,7 @@ function loadArtisanData(){
   }catch(e){}
 }
 function saveArtisanData(){
-  try{ localStorage.setItem(ARTISAN_KEY,JSON.stringify(artisanData)); }catch(e){}
+  safeSetItem(ARTISAN_KEY,JSON.stringify(artisanData));
 }
 function restoreArtisanData(data){
   if(data && Array.isArray(data.artisans)){

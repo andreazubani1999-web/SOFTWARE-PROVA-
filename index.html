@@ -1812,6 +1812,11 @@ canvas{
             type="text"
             inputmode="decimal"
             autocomplete="off">
+
+          <div
+            id="sellPriceVatHint"
+            class="small">
+          </div>
         </div>
 
       </div>
@@ -2358,25 +2363,9 @@ canvas{
             autocomplete="off">
         </div>
 
-        <div>
-          <label for="capitalGainsTax">
-            Imposta su plusvalenza, se vendita entro 5 anni (€)
-          </label>
-
-          <input
-            id="capitalGainsTax"
-            type="text"
-            inputmode="decimal"
-            autocomplete="off">
-        </div>
-
       </div>
 
-      <div class="status small">
-        In Italia, se rivendi entro 5 anni dall'acquisto e l'immobile non è
-        stato abitazione principale per la maggior parte del periodo,
-        la plusvalenza è normalmente tassabile. Verifica con il tuo
-        commercialista l'importo corretto e inseriscilo qui come costo.
+      <div id="companyTaxPanel">
       </div>
 
       <h3>Parametri generali</h3>
@@ -3292,6 +3281,60 @@ const LEGACY_STORAGE_KEYS = [
   "az_flipping_software_v10rc",
   "az_flipping_software_v09"
 ];
+
+/* ============================================================
+   IMPOSTE DELLA SOCIETÀ — VALORI INIZIALI
+   vatScenario: "tbd" (da definire, calcolato come il caso esente),
+   "exempt" (vendita esente, IVA lavori non recuperabile),
+   "taxable" (vendita soggetta a IVA, IVA lavori recuperabile).
+============================================================ */
+
+const COMPANY_TAX_DEFAULTS = {
+  vatScenario:"tbd",
+  worksVatRate:10,
+  saleVatRate:10,
+  salePriceIncludesVat:true,
+  iresRate:24,
+  irapRate:3.9,
+  distributeDividends:false,
+  dividendTaxRate:26
+};
+
+const VAT_SCENARIOS = {
+  tbd:"Da definire (calcolato come vendita esente, caso prudente)",
+  exempt:"Vendita esente IVA, IVA lavori non recuperabile",
+  taxable:"Vendita soggetta a IVA, IVA lavori recuperabile"
+};
+
+function companyTaxSettings(project){
+
+  const business=
+    project?.business||{};
+
+  const read=(key)=>
+    business[key]===undefined||
+    business[key]===null||
+    business[key]===""
+      ? COMPANY_TAX_DEFAULTS[key]
+      : business[key];
+
+  const scenario=
+    VAT_SCENARIOS[business.vatScenario]
+      ? business.vatScenario
+      : COMPANY_TAX_DEFAULTS.vatScenario;
+
+  return{
+    vatScenario:scenario,
+    worksVatRate:number(read("worksVatRate")),
+    saleVatRate:number(read("saleVatRate")),
+    salePriceIncludesVat:read("salePriceIncludesVat")!==false,
+    iresRate:number(read("iresRate")),
+    irapRate:number(read("irapRate")),
+    distributeDividends:read("distributeDividends")===true,
+    dividendTaxRate:number(read("dividendTaxRate"))
+  };
+
+}
 
 const GLOBAL_PRICES_KEY =
   "az_flipping_global_prices_v3";
@@ -4737,9 +4780,17 @@ function COMPUTTO_WORKS_FIX(project){
     project.business.loanFees=0;
   }
 
+  /* Vecchio campo "imposta su plusvalenza" (persona fisica): non più usato
+     nel calcolo, ma conservato nei dati per non perdere valori inseriti. */
   if(project.business.capitalGainsTax===undefined){
     project.business.capitalGainsTax=0;
   }
+
+  Object.entries(COMPANY_TAX_DEFAULTS).forEach(([key,defaultValue])=>{
+    if(project.business[key]===undefined){
+      project.business[key]=defaultValue;
+    }
+  });
 
   if(project.business.holdingUtilities===undefined){
     project.business.holdingUtilities=0;
@@ -5646,11 +5697,6 @@ function syncFromInputs(){
       value("loanFees")
     );
 
-  state.business.capitalGainsTax=
-    parseItalianGroupedMoney(
-      value("capitalGainsTax")
-    );
-
   state.business.holdingUtilities=
     parseItalianGroupedMoney(
       value("holdingUtilities")
@@ -5802,13 +5848,6 @@ function syncToInputs(){
   );
 
   setValue(
-    "capitalGainsTax",
-    formatMoneyInputValue(
-      state.business.capitalGainsTax
-    )
-  );
-
-  setValue(
     "holdingUtilities",
     formatMoneyInputValue(
       state.business.holdingUtilities
@@ -5883,7 +5922,6 @@ const MONEY_INPUT_IDS=[
   "loanFees",
   "holdingUtilities",
   "holdingCharges",
-  "capitalGainsTax",
   "targetMargin"
 
 ];
@@ -11752,10 +11790,27 @@ function calculateProjectTotals(project){
       loanFees
     );
 
-  const capitalGainsTax=
+  /* Vecchio campo persona fisica: conservato solo per l'avviso */
+  const legacyCapitalGainsTax=
     number(
       project?.business?.capitalGainsTax
     );
+
+  const taxSettings=
+    companyTaxSettings(project);
+
+  const vatExempt=
+    taxSettings.vatScenario!=="taxable";
+
+  /* IVA sui lavori (prezzi IVA esclusa): costo solo se non recuperabile */
+  const worksVatCost=
+    vatExempt
+      ? round2(
+          finalWorks*
+          taxSettings.worksVatRate/
+          100
+        )
+      : 0;
 
   const holdingUtilities=
     number(
@@ -11788,7 +11843,8 @@ function calculateProjectTotals(project){
     round2(
       purchasePrice+
       upfrontCosts+
-      finalWorks
+      finalWorks+
+      worksVatCost
     );
 
   const arv=
@@ -11796,17 +11852,33 @@ function calculateProjectTotals(project){
       project?.project?.sell
     );
 
+  /* Ricavo per la società: senza l'IVA da versare se la vendita è soggetta */
+  const saleVat=
+    !vatExempt &&
+    taxSettings.salePriceIncludesVat
+      ? round2(
+          arv-
+          arv/
+          (1+taxSettings.saleVatRate/100)
+        )
+      : 0;
+
+  const revenue=
+    round2(
+      arv-
+      saleVat
+    );
+
   /* Costi sostenuti in fase di vendita, sottratti dal ricavo lordo */
   const saleCosts=
     round2(
       agencySale+
-      notarySale+
-      capitalGainsTax
+      notarySale
     );
 
   const netSaleProceeds=
     round2(
-      arv-
+      revenue-
       saleCosts
     );
 
@@ -11841,12 +11913,78 @@ function calculateProjectTotals(project){
 
   const mao=
     round2(
-      arv-
+      revenue-
       saleCosts-
       finalWorks-
+      worksVatCost-
       upfrontCosts-
       targetMargin
     );
+
+  /* Imposte della società (modello semplificato).
+     Utile ante imposte = margine. IRAP: base senza costi finanziari
+     (interessi e istruttoria). Nessuna deducibilità IRAP dall'IRES. */
+  const profitBeforeTax=
+    margin;
+
+  const ires=
+    profitBeforeTax>0
+      ? round2(
+          profitBeforeTax*
+          taxSettings.iresRate/
+          100
+        )
+      : 0;
+
+  const irapBase=
+    round2(
+      profitBeforeTax+
+      financingCost
+    );
+
+  const irap=
+    irapBase>0
+      ? round2(
+          irapBase*
+          taxSettings.irapRate/
+          100
+        )
+      : 0;
+
+  const companyNetProfit=
+    round2(
+      profitBeforeTax-
+      ires-
+      irap
+    );
+
+  const netRoi=
+    investment>0
+      ? companyNetProfit/
+        investment*
+        100
+      : 0;
+
+  const dividendTax=
+    taxSettings.distributeDividends &&
+    companyNetProfit>0
+      ? round2(
+          companyNetProfit*
+          taxSettings.dividendTaxRate/
+          100
+        )
+      : 0;
+
+  const netToShareholders=
+    taxSettings.distributeDividends
+      ? round2(
+          Math.max(
+            0,
+            companyNetProfit
+          )-
+          dividendTax
+        )
+      : 0;
 
   const askingDifference=
     round2(
@@ -11892,7 +12030,31 @@ function calculateProjectTotals(project){
 
     financingCost,
 
-    capitalGainsTax,
+    legacyCapitalGainsTax,
+
+    taxSettings,
+
+    worksVatCost,
+
+    saleVat,
+
+    revenue,
+
+    profitBeforeTax,
+
+    ires,
+
+    irapBase,
+
+    irap,
+
+    companyNetProfit,
+
+    netRoi,
+
+    dividendTax,
+
+    netToShareholders,
 
     holdingUtilities,
 
@@ -12334,6 +12496,212 @@ function renderOfferAnalysis(){
    RENDER BUSINESS PLAN
 ============================================================ */
 
+/* ============================================================
+   IMPOSTE DELLA SOCIETÀ — PANNELLO
+============================================================ */
+
+function setCompanyTaxField(field,rawValue){
+
+  if(!state){
+    return;
+  }
+
+  let parsed=rawValue;
+
+  if(
+    field==="salePriceIncludesVat" ||
+    field==="distributeDividends"
+  ){
+    parsed=rawValue===true||rawValue==="true";
+  }else if(field!=="vatScenario"){
+    parsed=parseMoney(rawValue);
+  }
+
+  state.business[field]=parsed;
+
+  saveApp();
+
+  renderTotals();
+
+}
+
+function companyTaxLine(label,amount,strong=false){
+
+  return `
+    <div class="summaryLine">
+      <span>${strong ? `<strong>${label}</strong>` : label}</span>
+      <strong>${amount}</strong>
+    </div>
+  `;
+
+}
+
+function renderCompanyTaxPanel(totals){
+
+  const panel=
+    element("companyTaxPanel");
+
+  const hint=
+    element("sellPriceVatHint");
+
+  const settings=
+    totals.taxSettings;
+
+  const taxable=
+    settings.vatScenario==="taxable";
+
+  if(hint){
+
+    hint.textContent=
+      taxable
+        ? (
+            settings.salePriceIncludesVat
+              ? `Prezzo IVA inclusa (${formatNumber(settings.saleVatRate)}%): nel Business Plan l'IVA viene tolta dal ricavo.`
+              : `Prezzo IVA esclusa: l'acquirente paga in più l'IVA del ${formatNumber(settings.saleVatRate)}%.`
+          )
+        : "Prezzo senza IVA (vendita esente). Lo scenario IVA si sceglie nel Business Plan.";
+
+  }
+
+  if(!panel){
+    return;
+  }
+
+  const scenarioOptions=
+    Object.entries(VAT_SCENARIOS)
+      .map(([key,label])=>
+        `<option value="${key}" ${settings.vatScenario===key?"selected":""}>${label}</option>`
+      )
+      .join("");
+
+  const rateInput=(field,label,val)=>`
+    <div>
+      <label for="tax_${field}">${label}</label>
+      <input
+        id="tax_${field}"
+        type="number"
+        inputmode="decimal"
+        step="0.1"
+        min="0"
+        value="${val}"
+        onchange="setCompanyTaxField('${field}',this.value)">
+    </div>
+  `;
+
+  const legacyWarning=
+    totals.legacyCapitalGainsTax>0
+      ? `<div class="status small" style="border-color:#ffcc66">
+          ⚠️ Valore del vecchio campo "Imposta su plusvalenza":
+          ${euro(totals.legacyCapitalGainsTax)}.
+          Non più usato nel calcolo: le imposte sono ora calcolate qui sotto
+          come società. Il valore resta salvato nei dati del progetto.
+        </div>`
+      : ``;
+
+  const tbdWarning=
+    settings.vatScenario==="tbd"
+      ? `<div class="status small" style="border-color:#ffcc66">
+          ⚠️ Scenario IVA da confermare con il commercialista.
+          Finché non lo scegli, il calcolo considera la vendita esente
+          con IVA sui lavori non recuperabile.
+        </div>`
+      : ``;
+
+  panel.innerHTML=`
+
+    <h3>Imposte della società</h3>
+
+    <div class="status small">
+      Stima semplificata, da verificare con il commercialista.
+      Non gestisce perdite riportate, rimanenze a fine anno,
+      compensi amministratori, regime di cassa, agevolazioni sul registro.
+      Prezzi del computo e dei preventivi considerati IVA esclusa.
+      L'IVA non recuperabile è applicata solo ai lavori (computo,
+      preventivi e imprevisti), non a spese tecniche, agenzia e notaio.
+      IRAP non dedotta dall'IRES.
+    </div>
+
+    ${legacyWarning}
+
+    <div class="grid">
+
+      <div>
+        <label for="tax_vatScenario">Scenario IVA dell'operazione</label>
+        <select
+          id="tax_vatScenario"
+          onchange="setCompanyTaxField('vatScenario',this.value)">
+          ${scenarioOptions}
+        </select>
+      </div>
+
+      ${
+        taxable
+          ? rateInput("saleVatRate","Aliquota IVA sulla vendita (%)",settings.saleVatRate)+`
+            <div>
+              <label for="tax_salePriceIncludesVat">Il prezzo di vendita inserito è</label>
+              <select
+                id="tax_salePriceIncludesVat"
+                onchange="setCompanyTaxField('salePriceIncludesVat',this.value)">
+                <option value="true" ${settings.salePriceIncludesVat?"selected":""}>IVA inclusa (l'acquirente paga quella cifra)</option>
+                <option value="false" ${settings.salePriceIncludesVat?"":"selected"}>IVA esclusa (l'IVA si aggiunge al prezzo)</option>
+              </select>
+            </div>`
+          : rateInput("worksVatRate","Aliquota media IVA sui lavori (%)",settings.worksVatRate)
+      }
+
+      ${rateInput("iresRate","Aliquota IRES (%)",settings.iresRate)}
+
+      ${rateInput("irapRate","Aliquota IRAP (%)",settings.irapRate)}
+
+      <div>
+        <label for="tax_distributeDividends">Distribuisci l'utile ai soci</label>
+        <select
+          id="tax_distributeDividends"
+          onchange="setCompanyTaxField('distributeDividends',this.value)">
+          <option value="false" ${settings.distributeDividends?"":"selected"}>No, resta in società</option>
+          <option value="true" ${settings.distributeDividends?"selected":""}>Sì, come dividendo</option>
+        </select>
+      </div>
+
+      ${
+        settings.distributeDividends
+          ? rateInput("dividendTaxRate","Imposta sui dividendi (%)",settings.dividendTaxRate)
+          : ``
+      }
+
+    </div>
+
+    ${tbdWarning}
+
+    <div id="companyTaxResults">
+
+      ${companyTaxLine("Ricavi (prezzo di vendita senza IVA)",euro(totals.revenue))}
+
+      ${companyTaxLine("Costi totali dell'operazione","− "+euro(round2(totals.investment+totals.saleCosts)))}
+
+      ${companyTaxLine("Utile ante imposte",euro(totals.profitBeforeTax),true)}
+
+      ${companyTaxLine(`IRES (${formatNumber(settings.iresRate)}% sull'utile, se positivo)`,"− "+euro(totals.ires))}
+
+      ${companyTaxLine("Base IRAP (utile + costi finanziari)",euro(totals.irapBase))}
+
+      ${companyTaxLine(`IRAP (${formatNumber(settings.irapRate)}% sulla base, se positiva)`,"− "+euro(totals.irap))}
+
+      ${companyTaxLine("Utile netto in società",euro(totals.companyNetProfit),true)}
+
+      ${
+        settings.distributeDividends
+          ? companyTaxLine(`Imposta sui dividendi (${formatNumber(settings.dividendTaxRate)}%)`,"− "+euro(totals.dividendTax))+
+            companyTaxLine("Netto in tasca se distribuito",euro(totals.netToShareholders),true)
+          : ``
+      }
+
+    </div>
+
+  `;
+
+}
+
 function renderBusinessPlan(){
 
   if(!state){
@@ -12402,6 +12770,20 @@ function renderBusinessPlan(){
         </strong>
 
       </div>
+
+      ${
+        totals.worksVatCost>0
+          ? `<div class="summaryLine">
+              <span>
+                IVA lavori non recuperabile
+                (${formatNumber(totals.taxSettings.worksVatRate)}%)
+              </span>
+              <strong>
+                ${euro(totals.worksVatCost)}
+              </strong>
+            </div>`
+          : ``
+      }
 
       <div class="summaryLine">
 
@@ -12494,7 +12876,8 @@ function renderBusinessPlan(){
       <div class="summaryLine">
 
         <span>
-          ARV / ricavo di vendita lordo
+          Prezzo di vendita / ARV
+          (${totals.saleVat>0 ? "IVA inclusa" : "senza IVA"})
         </span>
 
         <strong>
@@ -12502,6 +12885,20 @@ function renderBusinessPlan(){
         </strong>
 
       </div>
+
+      ${
+        totals.saleVat>0
+          ? `<div class="summaryLine">
+              <span>
+                IVA sulla vendita da versare
+                (${formatNumber(totals.taxSettings.saleVatRate)}%)
+              </span>
+              <strong>
+                − ${euro(totals.saleVat)}
+              </strong>
+            </div>`
+          : ``
+      }
 
       <div class="summaryLine">
 
@@ -12530,18 +12927,6 @@ function renderBusinessPlan(){
       <div class="summaryLine">
 
         <span>
-          Imposta su plusvalenza
-        </span>
-
-        <strong>
-          − ${euro(totals.capitalGainsTax)}
-        </strong>
-
-      </div>
-
-      <div class="summaryLine">
-
-        <span>
           <strong>
             Ricavo netto di vendita
           </strong>
@@ -12557,7 +12942,7 @@ function renderBusinessPlan(){
 
         <span>
           <strong>
-            Margine previsto
+            Margine previsto (ante imposte)
           </strong>
         </span>
 
@@ -12570,7 +12955,7 @@ function renderBusinessPlan(){
       <div class="summaryLine">
 
         <span>
-          ROI previsto
+          ROI previsto (ante imposte)
         </span>
 
         <strong>
@@ -12579,9 +12964,37 @@ function renderBusinessPlan(){
 
       </div>
 
+      <div class="summaryLine">
+
+        <span>
+          <strong>
+            Utile netto in società (dopo IRES e IRAP)
+          </strong>
+        </span>
+
+        <strong>
+          ${euro(totals.companyNetProfit)}
+        </strong>
+
+      </div>
+
+      <div class="summaryLine">
+
+        <span>
+          ROI netto (dopo imposte)
+        </span>
+
+        <strong>
+          ${totals.netRoi.toFixed(1)}%
+        </strong>
+
+      </div>
+
     `;
 
   }
+
+  renderCompanyTaxPanel(totals);
 
   const quality=
     qualityAnalysis();
@@ -18870,7 +19283,19 @@ if(
       loanFees:0,
       loanInterestCost:0,
       financingCost:0,
-      capitalGainsTax:0,
+      legacyCapitalGainsTax:0,
+      taxSettings:{...COMPANY_TAX_DEFAULTS},
+      worksVatCost:0,
+      saleVat:0,
+      revenue:0,
+      profitBeforeTax:0,
+      ires:0,
+      irapBase:0,
+      irap:0,
+      companyNetProfit:0,
+      netRoi:0,
+      dividendTax:0,
+      netToShareholders:0,
       technicalCosts:0,
       upfrontCosts:0,
       saleCosts:0,
@@ -18997,13 +19422,18 @@ if(
           </div>
 
           <div class="report-metric ${marginClass}">
-            <span>Margine previsto</span>
+            <span>Margine previsto (ante imposte)</span>
             <strong>${hfMoney(totals.margin)}</strong>
           </div>
 
           <div class="report-metric ${roiClass}">
-            <span>ROI previsto</span>
+            <span>ROI previsto (ante imposte)</span>
             <strong>${hfNumber(totals.roi).toFixed(1)}%</strong>
+          </div>
+
+          <div class="report-metric">
+            <span>Utile netto in società</span>
+            <strong>${hfMoney(totals.companyNetProfit)}</strong>
           </div>
 
           <div class="report-metric">
@@ -19054,6 +19484,14 @@ if(
             <td>Imprevisti (${hfFormat(totals.contingencyPercentage)}%)</td>
             <td>${hfMoney(totals.contingency)}</td>
           </tr>
+          ${
+            hfNumber(totals.worksVatCost)>0
+              ? `<tr>
+                  <td>IVA lavori non recuperabile (${hfFormat(totals.taxSettings.worksVatRate)}%)</td>
+                  <td>${hfMoney(totals.worksVatCost)}</td>
+                </tr>`
+              : ``
+          }
           <tr class="report-total-row">
             <td>Investimento totale</td>
             <td>${hfMoney(totals.investment)}</td>
@@ -19064,9 +19502,17 @@ if(
 
         <table class="report-breakdown-table">
           <tr>
-            <td>ARV / ricavo di vendita lordo</td>
+            <td>Prezzo di vendita / ARV (${hfNumber(totals.saleVat)>0 ? "IVA inclusa" : "senza IVA"})</td>
             <td>${hfMoney(totals.arv)}</td>
           </tr>
+          ${
+            hfNumber(totals.saleVat)>0
+              ? `<tr>
+                  <td>IVA sulla vendita da versare (${hfFormat(totals.taxSettings.saleVatRate)}%)</td>
+                  <td>− ${hfMoney(totals.saleVat)}</td>
+                </tr>`
+              : ``
+          }
           <tr>
             <td>Spese agenzia (vendita)</td>
             <td>− ${hfMoney(totals.agencySale)}</td>
@@ -19075,15 +19521,54 @@ if(
             <td>Notaio / atto di vendita</td>
             <td>− ${hfMoney(totals.notarySale)}</td>
           </tr>
-          <tr>
-            <td>Imposta su plusvalenza</td>
-            <td>− ${hfMoney(totals.capitalGainsTax)}</td>
-          </tr>
           <tr class="report-total-row">
             <td>Ricavo netto di vendita</td>
             <td>${hfMoney(totals.netSaleProceeds)}</td>
           </tr>
         </table>
+
+        <h3>Imposte della società (stima semplificata)</h3>
+
+        <table class="report-breakdown-table">
+          <tr>
+            <td>Scenario IVA</td>
+            <td>${hfEscape(VAT_SCENARIOS[totals.taxSettings.vatScenario]||"")}</td>
+          </tr>
+          <tr>
+            <td>Utile ante imposte</td>
+            <td>${hfMoney(totals.profitBeforeTax)}</td>
+          </tr>
+          <tr>
+            <td>IRES (${hfFormat(totals.taxSettings.iresRate)}%)</td>
+            <td>− ${hfMoney(totals.ires)}</td>
+          </tr>
+          <tr>
+            <td>IRAP (${hfFormat(totals.taxSettings.irapRate)}% su ${hfMoney(totals.irapBase)})</td>
+            <td>− ${hfMoney(totals.irap)}</td>
+          </tr>
+          <tr class="report-total-row">
+            <td>Utile netto in società</td>
+            <td>${hfMoney(totals.companyNetProfit)}</td>
+          </tr>
+          ${
+            totals.taxSettings.distributeDividends
+              ? `<tr>
+                  <td>Imposta sui dividendi (${hfFormat(totals.taxSettings.dividendTaxRate)}%)</td>
+                  <td>− ${hfMoney(totals.dividendTax)}</td>
+                </tr>
+                <tr class="report-total-row">
+                  <td>Netto in tasca se distribuito</td>
+                  <td>${hfMoney(totals.netToShareholders)}</td>
+                </tr>`
+              : ``
+          }
+        </table>
+
+        <p class="report-note">
+          Stima semplificata, da verificare con il commercialista.
+          Non gestisce perdite riportate, rimanenze a fine anno, compensi
+          amministratori, regime di cassa, agevolazioni sul registro.
+        </p>
 
         <h2>Computo metrico</h2>
 

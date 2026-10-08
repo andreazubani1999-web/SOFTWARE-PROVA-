@@ -1,0 +1,163 @@
+{
+  "source": "AZ Annunci Analyzer",
+  "version": "1.5-no-photos",
+  "exportedAt": "2026-10-08T15:42:09.381Z",
+  "project": {
+    "name": "Trilocale Via Aquileia 2 - Via Veneto/Borgo Trento",
+    "link": "https://www.immobiliare.it/annunci/124108473/",
+    "zone": "Via Veneto - Borgo Trento, Brescia",
+    "address": "Via Aquileia 2, Brescia",
+    "askingPrice": 119900,
+    "mq": 91,
+    "arv": 227500,
+    "mao": 130500,
+    "score": 90,
+    "decision": "DA APPROFONDIRE"
+  },
+  "preliminary": {
+    "works": 50000,
+    "accessory": 12000,
+    "targetMargin": 30000,
+    "roiAtAsk": 21.722846441947567,
+    "marginAtAsk": 40600
+  },
+  "analisiZona": {
+    "qualitaZona": 8,
+    "liquiditaZona": 7,
+    "rischioMicrozona": 4,
+    "potenzialeRivendita": 8,
+    "serviziVicini": "Zona a due passi dal centro storico di Brescia: supermercati, scuole, negozi, farmacie e fermate dei mezzi pubblici nelle immediate vicinanze, buoni collegamenti con le principali arterie stradali.",
+    "targetAcquirente": "Investitori orientati alla rendita immediata (immobile già locato, rendimento lordo dichiarato 4,08%) nel breve-medio periodo; famiglie o coppie interessate all'acquisto solo a partire dal 2028, quando si libererà per un'eventuale ristrutturazione e rivendita.",
+    "rischiZona": "Via Veneto - Borgo Trento è una zona centrale e consolidata di Brescia, tra le più richieste e costose della città per questa tipologia di immobile, con buon potenziale di rivalutazione nel medio periodo."
+  },
+  "notes": {
+    "strengths": "Prezzo/mq nettamente sotto la media di zona (1.318 €/mq contro una media di 2.400 €/mq, circa -45%); zona centrale molto richiesta; immobile già locato con rendita immediata (4,08% lordo dichiarato) fino al 2028; cantina di proprietà; buono stato attuale, non serve intervento urgente; riscaldamento autonomo, infissi doppio vetro; spese condominiali basse (42 €/mese); un comparabile sullo stesso civico risulta già venduto, segno di buona liquidità della via.",
+    "risks": "L'immobile è locato fino al 15/03/2028: NON è ristrutturabile/rivendibile libero prima di quella data, salvo accordo di rilascio anticipato con l'inquilino (i contratti residenziali italiani tutelano fortemente il conduttore: il recesso anticipato del proprietario è possibile solo in casi specifici previsti dalla legge 431/98). Primo piano senza ascensore: riduce leggermente il target di rivendita (famiglie con bambini piccoli e persone anziane meno interessate) rispetto ai comparabili con ascensore. Edificio del 1960: da verificare lo stato reale di impianti elettrico e idraulico dietro la dicitura generica 'Buono/Abitabile'. Il rendimento del 4,08% dichiarato dal venditore andrebbe verificato con il contratto di locazione registrato e lo storico dei pagamenti dell'inquilino. Incongruenza nell'annuncio tra 'cucina separata' (testo descrittivo) e 'cucina ad angolo cottura' (dati tecnici): da chiarire con l'agenzia. Solo due comparabili con prezzo pienamente verificato in zona: base statistica dell'ARV solida ma non amplissima.",
+    "services": "Zona a due passi dal centro storico di Brescia: supermercati, scuole, negozi, farmacie e fermate dei mezzi pubblici nelle immediate vicinanze, buoni collegamenti con le principali arterie stradali.",
+    "buyerTarget": "Investitori orientati alla rendita immediata (immobile già locato, rendimento lordo dichiarato 4,08%) nel breve-medio periodo; famiglie o coppie interessate all'acquisto solo a partire dal 2028, quando si libererà per un'eventuale ristrutturazione e rivendita.",
+    "description": "Trilocale di 91 mq commerciali al primo piano di una palazzina del 1960 (3 piani, senza ascensore), in Via Aquileia 2, zona Via Veneto - Borgo Trento a Brescia, a pochi passi dal centro storico. Composto da ingresso su corridoio, ampio soggiorno con accesso al balcone, cucina separata (le caratteristiche tecniche dell'annuncio la indicano invece come 'angolo cottura': incongruenza da verificare di persona), due camere matrimoniali, un bagno finestrato e cantina di proprietà al piano seminterrato. Riscaldamento autonomo a metano con radiatori, infissi in alluminio con doppio vetro. Stato dichiarato 'Buono/Abitabile'. Spese condominio 42 €/mese, classe energetica esente. IMPORTANTE: l'immobile viene venduto già locato, con contratto fino al 15/03/2028 e canone annuo di 4.800 € (rendimento lordo dichiarato 4,08%). Annuncio online almeno da novembre 2025 (oltre 8 mesi), possibile margine di trattativa."
+  },
+  "comparables": [
+    {
+      "title": "Trilocale ristrutturato via Vittorio Veneto, Campo Marte",
+      "price": 250000,
+      "mq": 87,
+      "status": "Ottimo / Ristrutturato",
+      "link": "https://www.immobiliare.it/annunci/130048670/",
+      "photo": "https://pwm.im-cdn.it/image/1948620026/m-c.jpg",
+      "address": "Via Vittorio Veneto, Via Veneto - Borgo Trento, Brescia",
+      "distance": "Stessa zona (Via Veneto - Borgo Trento), pochi minuti dal soggetto",
+      "floor": "4° di 4, con ascensore",
+      "lift": "si",
+      "parking": "no",
+      "outdoor": "no",
+      "reasoning": "Stessa zona, stessa tipologia e metratura molto simile (87 vs 91 mq), ristrutturato di recente in palazzo d'epoca signorile. Prezzo/mq più alto perché ha ascensore (il soggetto non ce l'ha) e piano alto panoramico: rappresenta il limite superiore della forchetta ARV.",
+      "source": "Immobiliare.it (annuncio verificato con link diretto)",
+      "firstSeen": "2026-06-19",
+      "priceHistory": [],
+      "note": "€/mq: 2874"
+    },
+    {
+      "title": "Trilocale completamente rinnovato via Camillo Biseo, Crocifissa di Rosa",
+      "price": 225000,
+      "mq": 85,
+      "status": "Completamente rinnovato (impianti elettrico/idraulico e infissi PVC nuovi)",
+      "link": "https://www.immobiliare.it/annunci/129389354/",
+      "photo": "https://pwm.im-cdn.it/image/1932003820/m-c.jpg",
+      "address": "Via Camillo Biseo, Crocifissa di Rosa, Brescia",
+      "distance": "Zona adiacente (Crocifissa di Rosa/Borgo Trento), ~1 km dal soggetto",
+      "floor": "2° di 4, senza ascensore",
+      "lift": "no",
+      "parking": "no",
+      "outdoor": "balcone",
+      "reasoning": "Comparabile più affine: assenza di ascensore come il soggetto, zona adiacente, stessa fascia di prezzo, metratura e distribuzione (3 locali, 2 camere) molto simili. Riferimento principale per il valore 'senza ascensore' della zona.",
+      "source": "Immobiliare.it (annuncio verificato con link diretto)",
+      "firstSeen": "2026-07-21",
+      "priceHistory": [],
+      "note": "€/mq: 2647"
+    },
+    {
+      "title": "Bilocale ristrutturato via Aquileia 3 (venduto)",
+      "price": "",
+      "mq": 80,
+      "status": "Ottimo / Ristrutturato (venduto il 21/09/2024)",
+      "link": "https://www.immobiliare.it/annunci/108231183/",
+      "photo": "",
+      "address": "Via Aquileia 3, Borgo Trento, Brescia",
+      "distance": "Stesso civico/complesso del soggetto",
+      "floor": "2° di 4, con ascensore",
+      "lift": "si",
+      "parking": "no",
+      "outdoor": "balcone",
+      "reasoning": "Stesso civico del soggetto, già ristrutturato e venduto: utile come indicatore di liquidità di zona (l'immobile è stato assorbito dal mercato) e come riferimento qualitativo di finiture. Il prezzo di vendita finale non è pubblico su Immobiliare.it, quindi non è mediato nell'ARV numerico.",
+      "source": "Immobiliare.it (annuncio archiviato, risulta venduto)",
+      "firstSeen": "",
+      "priceHistory": [],
+      "note": "prezzo di vendita non disponibile pubblicamente"
+    }
+  ],
+  "renovationChecklist": [
+    [
+      "Bagno da rifare",
+      "verificare",
+      0
+    ],
+    [
+      "Impianto elettrico da verificare",
+      "verificare",
+      0
+    ],
+    [
+      "Impianto idraulico da verificare",
+      "verificare",
+      0
+    ],
+    [
+      "Serramenti da verificare",
+      "no",
+      0
+    ],
+    [
+      "Tinteggiatura completa",
+      "probabile",
+      0
+    ],
+    [
+      "Pavimenti da rifare",
+      "verificare",
+      0
+    ]
+  ],
+  "onlineSources": [
+    {
+      "title": "Annuncio originale - Immobiliare.it",
+      "url": "https://www.immobiliare.it/annunci/124108473/",
+      "type": "Annuncio",
+      "note": "Fonte principale dei dati dell'immobile in analisi."
+    },
+    {
+      "title": "Quotazioni immobiliari zona Borgo Trento/Crocifissa di Rosa - Immobiliare.it",
+      "url": "https://www.immobiliare.it/mercato-immobiliare/lombardia/brescia/borgo-trento-mompiano-ospedale/",
+      "type": "Mercato",
+      "note": "Prezzo medio €/mq e range di zona, usato per l'ARV da prezzo medio di zona e per i valori OMI C1."
+    },
+    {
+      "title": "Trilocale ristrutturato via Vittorio Veneto - Immobiliare.it",
+      "url": "https://www.immobiliare.it/annunci/130048670/",
+      "type": "Comparabile",
+      "note": "Comparabile con ascensore, limite superiore della forchetta ARV."
+    },
+    {
+      "title": "Trilocale rinnovato via Camillo Biseo - Immobiliare.it",
+      "url": "https://www.immobiliare.it/annunci/129389354/",
+      "type": "Comparabile",
+      "note": "Comparabile principale senza ascensore, usato per l'ARV da comparabili."
+    },
+    {
+      "title": "Bilocale ristrutturato via Aquileia 3 (venduto) - Immobiliare.it",
+      "url": "https://www.immobiliare.it/annunci/108231183/",
+      "type": "Comparabile",
+      "note": "Stesso civico del soggetto, indicatore di liquidità di zona."
+    }
+  ]
+}

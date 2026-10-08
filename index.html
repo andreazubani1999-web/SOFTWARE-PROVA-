@@ -1685,6 +1685,11 @@ canvas{
       Analisi immobile
     </button>
 
+    <button
+      onclick="showPage('actuals',this)">
+      Consuntivo
+    </button>
+
   </div>
 
   <button
@@ -2514,6 +2519,33 @@ canvas{
       </p>
 
       <div id="priceLibrary">
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ======================================================
+       CONSUNTIVO (SPESE REALI DEI LAVORI)
+  ======================================================= -->
+
+  <section
+    id="actuals"
+    class="page hidden">
+
+    <div class="panel">
+
+      <h1>Consuntivo lavori</h1>
+
+      <p class="small">
+        Durante e dopo il cantiere inserisci quanto hai speso davvero
+        per ogni voce (IVA esclusa, come nel computo). Il software
+        confronta la spesa reale con la stima e ti propone di
+        aggiornare la libreria Prezzi Reali. I prezzi standard del
+        catalogo non vengono mai modificati.
+      </p>
+
+      <div id="actualsContent">
       </div>
 
     </div>
@@ -6415,6 +6447,12 @@ function showPage(pageId,button){
   if(pageId==="analysis"){
 
     renderAnalysis();
+
+  }
+
+  if(pageId==="actuals"){
+
+    renderActuals();
 
   }
 
@@ -15077,6 +15115,549 @@ function renderAnalysis(){
 
 }
 
+/* ============================================================
+   CONSUNTIVO LAVORI
+   project.actuals = {
+     startedAt, snapshotAt,
+     rows:{code:{name,unit,qty,price,estimate,actual,actualQty,note}},
+     quotes:{useId:{label,estimate,actual,note}},
+     extras:[{id,desc,actual}],
+     contingency
+   }
+   La stima viene "fotografata" all'avvio, così il confronto non
+   cambia se poi aggiorni la libreria prezzi.
+============================================================ */
+
+function actualsEstimateSnapshot(project){
+
+  const rows={};
+
+  getWorksForProject(project).forEach(category=>{
+
+    category.items.forEach(item=>{
+
+      const code=item[0];
+
+      if(coveringUse(project,code)){
+        return;
+      }
+
+      const qty=projectRowQuantity(project,code);
+      const price=getProjectPrice(project,code);
+      const estimate=round2(qty*price);
+
+      if(qty>0 && estimate>0){
+        rows[code]={
+          name:item[1],
+          unit:item[2],
+          category:category.cat,
+          qty,
+          price,
+          estimate
+        };
+      }
+
+    });
+
+  });
+
+  const quotes={};
+
+  (project.quoteUses||[]).forEach(use=>{
+    quotes[use.id]={
+      label:[use.snapshot?.artisanName,use.snapshot?.title].filter(Boolean).join(" · ")||"Preventivo",
+      estimate:number(use.snapshot?.amount)
+    };
+  });
+
+  const totals=calculateProjectTotals(project);
+
+  return{
+    rows,
+    quotes,
+    contingency:totals.contingency
+  };
+
+}
+
+/* Fotografa la stima; i valori reali già inseriti restano */
+function startActuals(){
+
+  if(!state){
+    return;
+  }
+
+  const existing=state.actuals;
+
+  if(
+    existing &&
+    !confirm("Aggiornare la stima del consuntivo con il computo attuale?\n\nLe spese reali già inserite restano. Le voci tolte dal computo restano solo se hanno una spesa reale.")
+  ){
+    return;
+  }
+
+  const snapshot=actualsEstimateSnapshot(state);
+
+  const keepRows={};
+  const keepQuotes={};
+
+  if(existing){
+    Object.entries(existing.rows||{}).forEach(([code,row])=>{
+      if(row.actual!==undefined && row.actual!==null){
+        keepRows[code]=row;
+      }
+    });
+    Object.entries(existing.quotes||{}).forEach(([id,row])=>{
+      if(row.actual!==undefined && row.actual!==null){
+        keepQuotes[id]=row;
+      }
+    });
+  }
+
+  const merge=(fresh,old)=>{
+    const out={};
+    Object.entries(fresh).forEach(([key,row])=>{
+      const prev=old[key]||{};
+      out[key]={...row,actual:prev.actual??null,actualQty:prev.actualQty??null,note:prev.note||""};
+    });
+    Object.entries(old).forEach(([key,row])=>{
+      if(!out[key]){
+        out[key]={...row,estimate:0,removedFromEstimate:true};
+      }
+    });
+    return out;
+  };
+
+  state.actuals={
+    startedAt:existing?.startedAt||new Date().toISOString(),
+    snapshotAt:new Date().toISOString(),
+    rows:merge(snapshot.rows,keepRows),
+    quotes:merge(snapshot.quotes,keepQuotes),
+    extras:existing?.extras||[],
+    contingency:snapshot.contingency
+  };
+
+  saveApp();
+
+  renderActuals();
+
+}
+
+function parseActualValue(raw){
+
+  const text=String(raw??"").trim();
+
+  if(text===""){
+    return null;
+  }
+
+  return parseItalianGroupedMoney(text);
+
+}
+
+function setActualField(kind,key,field,raw){
+
+  const actuals=state?.actuals;
+
+  if(!actuals){
+    return;
+  }
+
+  const target=
+    kind==="quote"
+      ? actuals.quotes?.[key]
+      : actuals.rows?.[key];
+
+  if(!target){
+    return;
+  }
+
+  target[field]=
+    field==="note"
+      ? String(raw||"")
+      : parseActualValue(raw);
+
+  saveApp();
+
+  renderActualsKeepingFocus();
+
+}
+
+function addActualExtra(){
+
+  if(!state?.actuals){
+    return;
+  }
+
+  state.actuals.extras.push({id:uid(),desc:"",actual:null});
+
+  saveApp();
+
+  renderActuals();
+
+}
+
+function setActualExtra(id,field,raw){
+
+  const extra=(state?.actuals?.extras||[]).find(x=>x.id===id);
+
+  if(!extra){
+    return;
+  }
+
+  extra[field]=field==="desc" ? String(raw||"") : parseActualValue(raw);
+
+  saveApp();
+
+  renderActualsKeepingFocus();
+
+}
+
+function removeActualExtra(id){
+
+  if(!state?.actuals){
+    return;
+  }
+
+  state.actuals.extras=state.actuals.extras.filter(x=>x.id!==id);
+
+  saveApp();
+
+  renderActuals();
+
+}
+
+/* Ridisegna dopo che il campo toccato ha preso il fuoco, poi glielo ridà:
+   così si può passare da un campo all'altro senza perdere il cursore */
+function renderActualsKeepingFocus(){
+
+  setTimeout(()=>{
+
+    const active=document.activeElement;
+    const key=active?.dataset?.af||null;
+
+    renderActuals();
+
+    if(key){
+      const again=document.querySelector(`[data-af="${CSS.escape(key)}"]`);
+      if(again){
+        again.focus();
+      }
+    }
+
+  },0);
+
+}
+
+function deleteActuals(){
+
+  if(!state?.actuals){
+    return;
+  }
+
+  if(!confirm("Eliminare tutto il consuntivo di questo progetto? Le spese reali inserite andranno perse.")){
+    return;
+  }
+
+  delete state.actuals;
+
+  saveApp();
+
+  renderActuals();
+
+}
+
+/* Prezzo unitario reale di una voce: spesa reale / quantità reale (o stimata) */
+function actualUnitPrice(row){
+
+  if(row.actual===null||row.actual===undefined){
+    return null;
+  }
+
+  const qty=number(row.actualQty)>0 ? number(row.actualQty) : number(row.qty);
+
+  return qty>0 ? round2(row.actual/qty) : null;
+
+}
+
+function actualsSummary(actuals){
+
+  const rows=Object.values(actuals?.rows||{});
+  const quotes=Object.values(actuals?.quotes||{});
+  const extras=actuals?.extras||[];
+
+  const all=[...rows,...quotes];
+
+  const estimate=round2(all.reduce((t,r)=>t+number(r.estimate),0));
+
+  const entered=all.filter(r=>r.actual!==null&&r.actual!==undefined);
+
+  const estimateOfEntered=round2(entered.reduce((t,r)=>t+number(r.estimate),0));
+
+  const actual=round2(entered.reduce((t,r)=>t+number(r.actual),0));
+
+  const extrasTotal=round2(extras.reduce((t,x)=>t+number(x.actual),0));
+
+  return{
+    estimate,
+    estimateOfEntered,
+    actual,
+    extrasTotal,
+    contingency:number(actuals?.contingency),
+    entered:entered.length,
+    count:all.length,
+    difference:round2(actual-estimateOfEntered),
+    differencePerc:estimateOfEntered>0 ? (actual-estimateOfEntered)/estimateOfEntered*100 : 0,
+    totalActual:round2(actual+extrasTotal)
+  };
+
+}
+
+/* Scrive i prezzi reali nella libreria "Prezzi Reali" (mai nei prezzi standard) */
+function applyActualPrices(codes){
+
+  if(!state?.actuals){
+    return 0;
+  }
+
+  const list=
+    codes
+      .map(code=>({code,row:state.actuals.rows?.[code]}))
+      .filter(x=>x.row && actualUnitPrice(x.row)!==null && !x.row.removedFromEstimate);
+
+  if(!list.length){
+    return 0;
+  }
+
+  const lines=
+    list
+      .slice(0,15)
+      .map(x=>`• ${x.code} ${x.row.name}: ${euro(getRealLibraryPrice(x.code))} → ${euro(actualUnitPrice(x.row))} / ${x.row.unit}`)
+      .join("\n")+
+    (list.length>15 ? `\n… e altre ${list.length-15}` : "");
+
+  if(!confirm(`Aggiornare ${list.length} prezzo/i nella libreria Prezzi Reali?\n\n${lines}\n\nCambiano i totali dei progetti che usano la libreria Prezzi Reali e non hanno i prezzi bloccati. I prezzi standard del catalogo restano invariati.`)){
+    return 0;
+  }
+
+  list.forEach(x=>{
+    priceLibraries.reale[x.code]=actualUnitPrice(x.row);
+  });
+
+  savePriceLibraries();
+
+  saveApp();
+
+  if(typeof buildComputo==="function"){
+    buildComputo();
+  }
+
+  if(typeof buildPriceLibrary==="function"){
+    buildPriceLibrary();
+  }
+
+  renderAllSummaries();
+
+  renderActuals();
+
+  toast(`${list.length} prezzo/i aggiornati nella libreria Prezzi Reali`);
+
+  return list.length;
+
+}
+
+function getRealLibraryPrice(code){
+
+  if(Object.prototype.hasOwnProperty.call(priceLibraries.reale,code)){
+    return number(priceLibraries.reale[code]);
+  }
+
+  if(Object.prototype.hasOwnProperty.call(priceLibraries.standard,code)){
+    return number(priceLibraries.standard[code]);
+  }
+
+  return number(findWork(code)?.defaultPrice);
+
+}
+
+function renderActuals(){
+
+  const box=element("actualsContent");
+
+  if(!box){
+    return;
+  }
+
+  if(!state){
+    box.innerHTML="";
+    return;
+  }
+
+  const actuals=state.actuals;
+
+  if(!actuals){
+    box.innerHTML=`
+      <div class="status small">
+        Nessun consuntivo in questo progetto. Avvialo quando inizi a pagare
+        i lavori: il software fotografa la stima attuale del computo
+        e dei preventivi.
+      </div>
+      <div class="actions">
+        <button class="btn green" onclick="startActuals()">Avvia consuntivo</button>
+      </div>`;
+    return;
+  }
+
+  const sum=actualsSummary(actuals);
+  const esc=escapeHtml;
+  const pct=v=>(v>0?"+":"")+v.toFixed(1).replace(".",",")+"%";
+
+  const diffBadge=(estimate,actual)=>{
+    if(actual===null||actual===undefined){
+      return `<span class="small">da inserire</span>`;
+    }
+    const diff=round2(actual-estimate);
+    const perc=estimate>0 ? diff/estimate*100 : 0;
+    const color=diff>0 ? "#ff6b6b" : diff<0 ? "#2de38c" : "";
+    return `<strong ${color?`style="color:${color}"`:""}>${diff>0?"+":""}${euro(diff)}${estimate>0?` (${pct(perc)})`:""}</strong>`;
+  };
+
+  const moneyValue=v=>v===null||v===undefined ? "" : String(v).replace(".",",");
+
+  const rowsByCategory={};
+
+  Object.entries(actuals.rows||{}).forEach(([code,row])=>{
+    const cat=row.category||"Altre voci";
+    (rowsByCategory[cat]=rowsByCategory[cat]||[]).push([code,row]);
+  });
+
+  const withRealPrice=
+    Object.entries(actuals.rows||{})
+      .filter(([,row])=>actualUnitPrice(row)!==null && !row.removedFromEstimate)
+      .map(([code])=>code);
+
+  const rowHTML=(code,row)=>{
+    const unitReal=actualUnitPrice(row);
+    const libPrice=getRealLibraryPrice(code);
+    return `
+      <div data-actual-row="${esc(code)}" style="border-top:1px solid rgba(255,255,255,.12);padding:8px 0">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <strong>${esc(code)} ${esc(row.name)}</strong>
+          ${diffBadge(row.estimate,row.actual)}
+        </div>
+        <div class="small">
+          ${row.removedFromEstimate
+            ? "Voce non più presente nel computo"
+            : `Stima: ${formatNumber(row.qty)} ${esc(row.unit)} × ${euro(row.price)} = ${euro(row.estimate)}`}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <label class="small" style="flex:1;min-width:130px">Spesa reale (€)
+            <input type="text" inputmode="decimal" value="${moneyValue(row.actual)}" data-af="row|${esc(code)}|actual"
+              onchange="setActualField('row','${esc(code)}','actual',this.value)">
+          </label>
+          <label class="small" style="flex:1;min-width:110px">Quantità reale (${esc(row.unit)})
+            <input type="text" inputmode="decimal" placeholder="${formatNumber(row.qty)}" value="${moneyValue(row.actualQty)}" data-af="row|${esc(code)}|actualQty"
+              onchange="setActualField('row','${esc(code)}','actualQty',this.value)">
+          </label>
+        </div>
+        ${
+          unitReal!==null && !row.removedFromEstimate
+            ? `<div class="small" style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                Prezzo reale ${euro(unitReal)} / ${esc(row.unit)}
+                (libreria Prezzi Reali: ${euro(libPrice)})
+                ${Math.abs(unitReal-libPrice)>=0.01
+                  ? `<button class="btn gray" style="padding:4px 10px;min-height:0" onclick="applyActualPrices(['${esc(code)}'])">Usa nella libreria Prezzi Reali</button>`
+                  : `<span>✓ già in libreria</span>`}
+              </div>`
+            : ``
+        }
+      </div>`;
+  };
+
+  const quoteHTML=(id,row)=>`
+    <div data-actual-quote="${esc(id)}" style="border-top:1px solid rgba(255,255,255,.12);padding:8px 0">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <strong>${esc(row.label)}</strong>
+        ${diffBadge(row.estimate,row.actual)}
+      </div>
+      <div class="small">${row.removedFromEstimate?"Preventivo non più usato nel progetto":`Preventivo: ${euro(row.estimate)}`}</div>
+      <label class="small" style="display:block;margin-top:6px">Spesa reale (€)
+        <input type="text" inputmode="decimal" value="${moneyValue(row.actual)}" data-af="quote|${esc(id)}|actual"
+          onchange="setActualField('quote','${esc(id)}','actual',this.value)">
+      </label>
+    </div>`;
+
+  box.innerHTML=`
+
+    <div class="status small">
+      Stima fotografata il ${esc(formatAnalyzerDate(actuals.snapshotAt))}.
+      Prezzi IVA esclusa.
+    </div>
+
+    <div class="summaryLine"><span>Voci con spesa reale inserita</span><strong>${sum.entered} su ${sum.count}</strong></div>
+    <div class="summaryLine"><span>Stima di queste voci</span><strong>${euro(sum.estimateOfEntered)}</strong></div>
+    <div class="summaryLine"><span>Spesa reale di queste voci</span><strong>${euro(sum.actual)}</strong></div>
+    <div class="summaryLine"><span><strong>Scostamento</strong></span>${sum.entered?diffBadge(sum.estimateOfEntered,sum.actual):`<span class="small">—</span>`}</div>
+    <div class="summaryLine"><span>Spese non previste nel computo</span><strong>${euro(sum.extrasTotal)}</strong></div>
+    <div class="summaryLine"><span>Imprevisti messi in stima</span><strong>${euro(sum.contingency)}</strong></div>
+    ${
+      sum.entered || sum.extrasTotal
+        ? (()=>{
+            const overrun=round2(sum.difference+sum.extrasTotal);
+            return `<div class="summaryLine">
+                <span><strong>Sforamento netto</strong> (scostamento + spese non previste)</span>
+                <strong>${overrun>0?"+":""}${euro(overrun)}</strong>
+              </div>
+              <div class="small" style="margin-top:4px">
+                ${overrun<=0
+                  ? `<span style="color:#2de38c">Sotto la stima: gli imprevisti non sono stati usati.</span>`
+                  : overrun>sum.contingency
+                    ? `<span style="color:#ff6b6b">Supera gli imprevisti messi in stima di ${euro(round2(overrun-sum.contingency))}.</span>`
+                    : `<span style="color:#2de38c">Coperto dagli imprevisti (ne restano ${euro(round2(sum.contingency-overrun))}).</span>`}
+              </div>`;
+          })()
+        : ``
+    }
+
+    <div class="actions" style="margin-top:10px">
+      ${withRealPrice.length?`<button class="btn yellow" onclick="applyActualPrices(${esc(JSON.stringify(withRealPrice))})">Aggiorna la libreria Prezzi Reali (${withRealPrice.length} voci)</button>`:``}
+      <button class="btn gray" onclick="startActuals()">Aggiorna stima dal computo</button>
+    </div>
+
+    ${Object.entries(rowsByCategory).map(([cat,list])=>`
+      <h3>${esc(cat)}</h3>
+      ${list.map(([code,row])=>rowHTML(code,row)).join("")}
+    `).join("")}
+
+    ${
+      Object.keys(actuals.quotes||{}).length
+        ? `<h3>Preventivi artigiani</h3>${Object.entries(actuals.quotes).map(([id,row])=>quoteHTML(id,row)).join("")}`
+        : ``
+    }
+
+    <h3>Spese non previste nel computo</h3>
+    ${(actuals.extras||[]).map(x=>`
+      <div data-actual-extra="${esc(x.id)}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">
+        <label class="small" style="flex:2;min-width:150px">Descrizione
+          <input type="text" value="${esc(x.desc)}" data-af="extra|${esc(x.id)}|desc" onchange="setActualExtra('${esc(x.id)}','desc',this.value)">
+        </label>
+        <label class="small" style="flex:1;min-width:110px">Spesa (€)
+          <input type="text" inputmode="decimal" value="${moneyValue(x.actual)}" data-af="extra|${esc(x.id)}|actual" onchange="setActualExtra('${esc(x.id)}','actual',this.value)">
+        </label>
+        <button class="btn gray" style="padding:4px 10px;min-height:0" onclick="removeActualExtra('${esc(x.id)}')">×</button>
+      </div>`).join("")}
+    <div class="actions" style="margin-top:8px">
+      <button class="btn gray" onclick="addActualExtra()">+ Spesa non prevista</button>
+    </div>
+
+    <div class="actions" style="margin-top:16px">
+      <button class="btn gray" onclick="deleteActuals()">Elimina consuntivo</button>
+    </div>
+
+  `;
+
+}
+
 function renderAllSummaries(){
 
   renderTotals();
@@ -15104,6 +15685,8 @@ function renderEverything(){
   renderAllSummaries();
 
   renderAnalysis();
+
+  renderActuals();
 
   redrawPlan();
 

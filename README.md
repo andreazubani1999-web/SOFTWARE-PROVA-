@@ -10,6 +10,7 @@ Funziona offline: basta aprire `index.html` nel browser (anche da telefono, come
 - **Computo** — `computo`: 128 voci di catalogo (`COMPUTO_WORKS`), prezzi bloccabili per progetto, voci nascoste per progetto o a livello di catalogo
 - **Business** — `business`: Business Plan con imposte della società (S.r.l.), scenario IVA, IRES, IRAP e dividendi
 - **Archivio** — `archive`
+- **Consuntivo** — `actuals`: spese reali dei lavori confrontate con la stima, con aggiornamento della libreria Prezzi Reali
 - **Analisi immobile** — `analysis`: import del JSON di AZ Annunci Analyzer in sola lettura, con "usa questo valore"
 - **Artigiani** — `artisans`: rubrica, preventivi e copertura delle voci del computo
 - **Impostazioni** — `settings`: backup e ripristino
@@ -33,5 +34,6 @@ for f in test/t*.js; do node "$f"; done
 | `test/t5.js` | preventivo o artigiano eliminato mentre è usato nei progetti: elenco dei progetti, scelta se togliere le copie, "usato in" |
 | `test/t6.js` | memoria piena: avviso di salvataggio fallito, indicatore dello spazio, backup con planimetria e riepilogo |
 | `test/t7.js` | import da AZ Annunci Analyzer (formati 1.5, "Andrea AI", 0.6 minimale): sola lettura, "usa questo valore" con conferma, foto escluse, file sbagliati e testo malevolo; dati di prova in `test/fixtures/` |
+| `test/t9.js` | consuntivo: stima fotografata, spese reali per voce e preventivo, quantità reali, spese non previste contro imprevisti, aggiornamento della sola libreria Prezzi Reali |
 
 Per provare un altro file: `APP=/percorso/file.html node test/t1.js`.

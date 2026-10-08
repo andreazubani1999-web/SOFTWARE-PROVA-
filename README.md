@@ -8,7 +8,7 @@ Funziona offline: basta aprire `index.html` nel browser (anche da telefono, come
 - **Home** — `home`
 - **Piano** — `plan`
 - **Computo** — `computo`: 128 voci di catalogo (`COMPUTO_WORKS`), prezzi bloccabili per progetto, voci nascoste per progetto o a livello di catalogo
-- **Business** — `business`: Business Plan con imposte della società (S.r.l.), scenario IVA, IRES, IRAP e dividendi
+- **Business** — `business`: Business Plan con imposte della società (S.r.l.), scenario IVA, IRES, IRAP e dividendi, ROI annuo, prova di resistenza e prezzo di pareggio
 - **Archivio** — `archive`
 - **Analisi immobile** — `analysis`: import del JSON di AZ Annunci Analyzer in sola lettura, con "usa questo valore"
 - **Artigiani** — `artisans`: rubrica, preventivi e copertura delle voci del computo
@@ -33,5 +33,6 @@ for f in test/t*.js; do node "$f"; done
 | `test/t5.js` | preventivo o artigiano eliminato mentre è usato nei progetti: elenco dei progetti, scelta se togliere le copie, "usato in" |
 | `test/t6.js` | memoria piena: avviso di salvataggio fallito, indicatore dello spazio, backup con planimetria e riepilogo |
 | `test/t7.js` | import da AZ Annunci Analyzer (formati 1.5, "Andrea AI", 0.6 minimale): sola lettura, "usa questo valore" con conferma, foto escluse, file sbagliati e testo malevolo; dati di prova in `test/fixtures/` |
+| `test/t8.js` | ROI annuo, prova di resistenza (vendita −10%, lavori +15%, ritardo 6 mesi, tutto insieme) e prezzo di vendita di pareggio, calcolati a mano |
 
 Per provare un altro file: `APP=/percorso/file.html node test/t1.js`.

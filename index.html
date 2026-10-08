@@ -2260,6 +2260,7 @@ canvas{
 
       <div class="status small">
         Se acquisti in contanti senza finanziamento, lascia questi campi a zero.
+        La durata dell'operazione è in "Parametri generali".
       </div>
 
       <div class="grid">
@@ -2286,19 +2287,6 @@ canvas{
             type="number"
             inputmode="decimal"
             step="0.01"
-            min="0">
-        </div>
-
-        <div>
-          <label for="loanMonths">
-            Durata prevista dell'operazione (mesi)
-          </label>
-
-          <input
-            id="loanMonths"
-            type="number"
-            inputmode="decimal"
-            step="1"
             min="0">
         </div>
 
@@ -2384,6 +2372,23 @@ canvas{
       <div class="grid">
 
         <div>
+          <label for="loanMonths">
+            Durata prevista dell'operazione (mesi)
+          </label>
+
+          <input
+            id="loanMonths"
+            type="number"
+            inputmode="decimal"
+            step="1"
+            min="0">
+
+          <div class="small">
+            Dall'acquisto alla vendita. Serve per interessi, ROI annuo e prova di resistenza.
+          </div>
+        </div>
+
+        <div>
           <label for="contingencyPerc">
             Imprevisti automatici (%)
           </label>
@@ -2430,6 +2435,15 @@ canvas{
       <h2>Riepilogo</h2>
 
       <div id="businessSummary">
+      </div>
+
+    </div>
+
+    <div class="panel">
+
+      <h2>Prova di resistenza</h2>
+
+      <div id="stressTestPanel">
       </div>
 
     </div>
@@ -3352,6 +3366,33 @@ const COMPANY_TAX_DEFAULTS = {
   distributeDividends:false,
   dividendTaxRate:26
 };
+
+/* Prova di resistenza: quanto peggiorare ARV, lavori e tempi */
+const STRESS_DEFAULTS = {
+  stressArvDrop:10,
+  stressWorksIncrease:15,
+  stressDelayMonths:6
+};
+
+function stressSettings(project){
+
+  const business=
+    project?.business||{};
+
+  const read=(key)=>
+    business[key]===undefined||
+    business[key]===null||
+    business[key]===""
+      ? STRESS_DEFAULTS[key]
+      : number(business[key]);
+
+  return{
+    arvDrop:read("stressArvDrop"),
+    worksIncrease:read("stressWorksIncrease"),
+    delayMonths:read("stressDelayMonths")
+  };
+
+}
 
 const VAT_SCENARIOS = {
   tbd:"Da definire (calcolato come vendita esente, caso prudente)",
@@ -5005,7 +5046,7 @@ function COMPUTTO_WORKS_FIX(project){
     project.business.capitalGainsTax=0;
   }
 
-  Object.entries(COMPANY_TAX_DEFAULTS).forEach(([key,defaultValue])=>{
+  Object.entries({...COMPANY_TAX_DEFAULTS,...STRESS_DEFAULTS}).forEach(([key,defaultValue])=>{
     if(project.business[key]===undefined){
       project.business[key]=defaultValue;
     }
@@ -11861,7 +11902,8 @@ function projectRowQuantity(
 
 }
 
-function calculateProjectTotals(project){
+/* stress (facoltativo): {arvFactor, worksFactor, extraMonths} per la prova di resistenza */
+function calculateProjectTotals(project,stress={}){
 
   const categoryTotals={};
 
@@ -11929,7 +11971,8 @@ function calculateProjectTotals(project){
 
   worksTotal=
     round2(
-      worksTotal
+      worksTotal*
+      (stress.worksFactor||1)
     );
 
   const contingencyPercentage=
@@ -12007,10 +12050,14 @@ function calculateProjectTotals(project){
       project?.business?.loanRate
     );
 
-  const loanMonths=
+  const baseMonths=
     number(
       project?.business?.loanMonths
     );
+
+  const loanMonths=
+    baseMonths+
+    number(stress.extraMonths);
 
   const loanFees=
     number(
@@ -12062,10 +12109,15 @@ function calculateProjectTotals(project){
       project?.business?.holdingCharges
     );
 
+  /* In caso di ritardo le spese di gestione crescono in proporzione ai mesi */
   const holdingCosts=
     round2(
-      holdingUtilities+
-      holdingCharges
+      (holdingUtilities+holdingCharges)*
+      (
+        baseMonths>0
+          ? loanMonths/baseMonths
+          : 1
+      )
     );
 
   /* Costi sostenuti in fase di acquisto e cantiere */
@@ -12088,8 +12140,11 @@ function calculateProjectTotals(project){
     );
 
   const arv=
-    number(
-      project?.project?.sell
+    round2(
+      number(
+        project?.project?.sell
+      )*
+      (stress.arvFactor||1)
     );
 
   /* Ricavo per la società: senza l'IVA da versare se la vendita è soggetta */
@@ -12205,6 +12260,29 @@ function calculateProjectTotals(project){
         100
       : 0;
 
+  /* ROI annuo semplice: ROI × 12 / mesi (null se la durata non è inserita) */
+  const annualRoi=
+    loanMonths>0
+      ? roi*12/loanMonths
+      : null;
+
+  const annualNetRoi=
+    loanMonths>0
+      ? netRoi*12/loanMonths
+      : null;
+
+  /* Prezzo di vendita (come inserito) a cui l'utile ante imposte è zero */
+  const priceToRevenue=
+    arv>0 && revenue>0
+      ? arv/revenue
+      : 1;
+
+  const breakEvenArv=
+    round2(
+      (revenue-margin)*
+      priceToRevenue
+    );
+
   const dividendTax=
     taxSettings.distributeDividends &&
     companyNetProfit>0
@@ -12291,6 +12369,14 @@ function calculateProjectTotals(project){
     companyNetProfit,
 
     netRoi,
+
+    durationMonths:loanMonths,
+
+    annualRoi,
+
+    annualNetRoi,
+
+    breakEvenArv,
 
     dividendTax,
 
@@ -12942,6 +13028,129 @@ function renderCompanyTaxPanel(totals){
 
 }
 
+/* ============================================================
+   PROVA DI RESISTENZA
+============================================================ */
+
+function stressScenarios(project){
+
+  const settings=
+    stressSettings(project);
+
+  const arvFactor=
+    1-settings.arvDrop/100;
+
+  const worksFactor=
+    1+settings.worksIncrease/100;
+
+  const extraMonths=
+    settings.delayMonths;
+
+  const list=[
+    {key:"base",label:"Come previsto",stress:{}},
+    {key:"arv",label:`Vendita a −${formatNumber(settings.arvDrop)}%`,stress:{arvFactor}},
+    {key:"works",label:`Lavori +${formatNumber(settings.worksIncrease)}%`,stress:{worksFactor}},
+    {key:"delay",label:`Ritardo di ${formatNumber(extraMonths)} mesi`,stress:{extraMonths}},
+    {key:"all",label:"Tutto insieme",stress:{arvFactor,worksFactor,extraMonths}}
+  ];
+
+  return list.map(item=>({
+    ...item,
+    totals:calculateProjectTotals(project,item.stress)
+  }));
+
+}
+
+function renderStressTest(totals){
+
+  const panel=
+    element("stressTestPanel");
+
+  if(!panel||!state){
+    return;
+  }
+
+  const settings=
+    stressSettings(state);
+
+  const target=
+    number(state.business?.targetMargin);
+
+  const scenarios=
+    stressScenarios(state);
+
+  const verdict=(t)=>
+    t.margin<0
+      ? `<span style="color:#ff6b6b">❌ in perdita</span>`
+      : t.margin<target
+        ? `<span style="color:#ffcc66">⚠️ sotto il margine minimo</span>`
+        : `<span style="color:#2de38c">✅ regge</span>`;
+
+  const input=(field,label,val,step)=>`
+    <div>
+      <label for="stress_${field}">${label}</label>
+      <input
+        id="stress_${field}"
+        type="number"
+        inputmode="decimal"
+        step="${step}"
+        min="0"
+        value="${val}"
+        onchange="setCompanyTaxField('${field}',this.value)">
+    </div>
+  `;
+
+  const drop=
+    totals.arv>0
+      ? (1-totals.breakEvenArv/totals.arv)*100
+      : 0;
+
+  panel.innerHTML=`
+
+    <p class="small">
+      Ricalcola il guadagno se le cose vanno peggio del previsto.
+      Il ritardo aumenta interessi e spese di gestione
+      ${totals.durationMonths>0?"in proporzione ai mesi":"(inserisci la durata per includere le spese di gestione)"}.
+    </p>
+
+    <div class="grid">
+      ${input("stressArvDrop","Calo del prezzo di vendita (%)",settings.arvDrop,"1")}
+      ${input("stressWorksIncrease","Aumento dei lavori (%)",settings.worksIncrease,"1")}
+      ${input("stressDelayMonths","Ritardo (mesi)",settings.delayMonths,"1")}
+    </div>
+
+    <div style="margin-top:10px">
+      ${scenarios.map(item=>`
+        <div
+          data-scenario="${item.key}"
+          style="border-top:1px solid rgba(255,255,255,.12);padding:8px 0">
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <strong>${item.label}</strong>
+            <span>${verdict(item.totals)}</span>
+          </div>
+          <div class="small">
+            Utile ante imposte ${euro(item.totals.margin)}
+            · netto ${euro(item.totals.companyNetProfit)}
+            · ROI annuo netto ${item.totals.annualNetRoi===null?"—":item.totals.annualNetRoi.toFixed(1).replace(".",",")+"%"}
+          </div>
+        </div>`).join("")}
+    </div>
+
+    <div class="summaryLine" style="margin-top:10px">
+      <span>
+        <strong>Prezzo di vendita di pareggio</strong>
+        (utile ante imposte zero)
+      </span>
+      <strong>
+        ${euro(totals.breakEvenArv)}
+        ${totals.arv>0?`(${drop>=0?"−":"+"}${Math.abs(drop).toFixed(1).replace(".",",")}% rispetto all'ARV)`:""}
+      </strong>
+    </div>
+
+  `;
+
+}
+
 function renderBusinessPlan(){
 
   if(!state){
@@ -13230,11 +13439,34 @@ function renderBusinessPlan(){
 
       </div>
 
+      <div class="summaryLine">
+
+        <span>
+          ROI annuo netto
+          ${
+            totals.durationMonths>0
+              ? `(su ${formatNumber(totals.durationMonths)} mesi)`
+              : ``
+          }
+        </span>
+
+        <strong>
+          ${
+            totals.annualNetRoi===null
+              ? `inserisci la durata`
+              : totals.annualNetRoi.toFixed(1)+"%"
+          }
+        </strong>
+
+      </div>
+
     `;
 
   }
 
   renderCompanyTaxPanel(totals);
+
+  renderStressTest(totals);
 
   const quality=
     qualityAnalysis();
@@ -20047,6 +20279,10 @@ if(
       netRoi:0,
       dividendTax:0,
       netToShareholders:0,
+      durationMonths:0,
+      annualRoi:null,
+      annualNetRoi:null,
+      breakEvenArv:0,
       technicalCosts:0,
       upfrontCosts:0,
       saleCosts:0,
@@ -20313,6 +20549,22 @@ if(
                 </tr>`
               : ``
           }
+        </table>
+
+        <h3>Prova di resistenza</h3>
+
+        <table class="report-breakdown-table">
+          ${
+            (typeof stressScenarios==="function" && state ? stressScenarios(state) : [])
+              .map(item=>`<tr>
+                <td>${hfEscape(item.label)}</td>
+                <td>${hfMoney(item.totals.companyNetProfit)} netti${item.totals.annualNetRoi===null?"":" · ROI annuo "+hfNumber(item.totals.annualNetRoi).toFixed(1)+"%"}</td>
+              </tr>`).join("")
+          }
+          <tr class="report-total-row">
+            <td>Prezzo di vendita di pareggio</td>
+            <td>${hfMoney(totals.breakEvenArv)}</td>
+          </tr>
         </table>
 
         <p class="report-note">

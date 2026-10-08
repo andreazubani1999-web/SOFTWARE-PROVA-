@@ -20281,11 +20281,13 @@ function artisanToggleTrade(id,trade){
 }
 function artisanDelete(id){
   const a=findArtisan(id); if(!a) return;
-  const used=(appData.projects||[]).filter(p=>(p.quoteUses||[]).some(u=>u.artisanId===id)).length;
-  const msg=used
-    ? `Eliminare "${a.name}"? I suoi preventivi già usati in ${used} progetto/i restano nei progetti (sono copie), ma sparisce la scheda.`
+  const match=u=>u.artisanId===id;
+  const used=projectsUsingQuote(match);
+  const msg=used.length
+    ? `Eliminare "${a.name}" e tutti i suoi dati?\n\nI suoi preventivi sono usati in ${used.length} progetto/i:\n`+quoteUsageProjectNames(used).map(n=>"• "+n).join("\n")
     : `Eliminare "${a.name}" e tutti i suoi dati?`;
   if(!confirm(msg)) return;
+  removeQuoteUsesFromProjects(used,match);
   artisanData.artisans=artisanData.artisans.filter(x=>x.id!==id);
   if(artisanOpenId===id) artisanOpenId=null;
   saveArtisanData(); renderArtisans();
@@ -20339,10 +20341,34 @@ function quoteSet(aid,qid,field,value){
   q[field]=(field==="amount")?number(value):value; saveArtisanData();
   if(field==="type"||field==="amount") renderArtisans();
 }
+/* Progetti che usano (come copia) un preventivo o i preventivi di un artigiano */
+function projectsUsingQuote(match){
+  return (appData.projects||[])
+    .map(p=>({project:p,uses:(p.quoteUses||[]).filter(match)}))
+    .filter(x=>x.uses.length);
+}
+function quoteUsageProjectNames(list){
+  return list.map(x=>x.project.project?.name||x.project.name||"Senza nome");
+}
+/* Chiede se togliere le copie dai progetti; true = tolte */
+function removeQuoteUsesFromProjects(list,match){
+  if(!list.length) return false;
+  if(!confirm("Togliere il preventivo anche da questi progetti?\n\n"+quoteUsageProjectNames(list).map(n=>"• "+n).join("\n")+"\n\nOK = toglilo: le voci coperte tornano ai prezzi di listino.\nAnnulla = lascia la copia nei progetti.")) return false;
+  list.forEach(x=>{ x.project.quoteUses=(x.project.quoteUses||[]).filter(u=>!match(u)); });
+  refreshAfterQuoteChange();
+  return true;
+}
 function quoteDelete(aid,qid){
   const a=findArtisan(aid); if(!a) return;
-  if(!confirm("Eliminare questo preventivo? Le copie già usate nei progetti restano.")) return;
+  const match=u=>u.quoteId===qid;
+  const used=projectsUsingQuote(match);
+  const msg=used.length
+    ? "Eliminare questo preventivo?\n\nÈ usato in "+used.length+" progetto/i:\n"+quoteUsageProjectNames(used).map(n=>"• "+n).join("\n")
+    : "Eliminare questo preventivo?";
+  if(!confirm(msg)) return;
+  const removed=removeQuoteUsesFromProjects(used,match);
   a.quotes=a.quotes.filter(q=>q.id!==qid); saveArtisanData(); renderArtisans();
+  if(used.length) toast(removed?"Preventivo eliminato e tolto dai progetti":"Preventivo eliminato: le copie restano nei progetti");
 }
 function quoteAddItem(aid,qid){
   const q=findQuote(findArtisan(aid),qid); if(!q) return;
@@ -20630,6 +20656,8 @@ function quoteHTML(a,q,names){
       <button class="btn gray" style="margin-top:6px" onclick="quoteAddItem('${a.id}','${q.id}')">+ Riga</button></div>`:""}
     <label style="margin-top:8px;display:block">Cosa comprende (come scritto dall'artigiano)<textarea rows="2" onchange="quoteSet('${a.id}','${q.id}','includesText',this.value)">${escapeHtml(q.includesText)}</textarea></label>
     <label style="display:block">Cosa NON comprende<textarea rows="2" onchange="quoteSet('${a.id}','${q.id}','excludesText',this.value)">${escapeHtml(q.excludesText)}</textarea></label>
+    ${(()=>{ const used=quoteUsageProjectNames(projectsUsingQuote(u=>u.quoteId===q.id));
+      return `<div class="small" style="margin-top:6px">${used.length?`<strong>Usato in:</strong> ${used.map(escapeHtml).join(" · ")}`:"Non usato in nessun progetto"}</div>`; })()}
     <div class="small" style="margin-top:6px">Voci del computo che sostituisce: ${q.covers.length?q.covers.map(c=>escapeHtml(c+" "+(names[c]?.name||"?"))).join(" · "):"<em>nessuna scelta</em>"}</div>
     <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
       <button class="btn blue" onclick="quotePickerOpen('${a.id}','${q.id}')">Scegli le voci coperte</button>

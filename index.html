@@ -1680,6 +1680,11 @@ canvas{
       Archivio
     </button>
 
+    <button
+      onclick="showPage('analysis',this)">
+      Analisi immobile
+    </button>
+
   </div>
 
   <button
@@ -2509,6 +2514,48 @@ canvas{
       </p>
 
       <div id="priceLibrary">
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ======================================================
+       ANALISI IMMOBILE (IMPORT DA AZ ANNUNCI ANALYZER)
+  ======================================================= -->
+
+  <section
+    id="analysis"
+    class="page hidden">
+
+    <div class="panel">
+
+      <h1>Analisi immobile</h1>
+
+      <p class="small">
+        Importa il file JSON esportato da AZ Annunci Analyzer. I dati
+        restano in sola lettura e non cambiano il Business Plan: per
+        usare un numero premi "Usa questo valore". Le foto dell'annuncio
+        non vengono importate.
+      </p>
+
+      <div class="actions">
+
+        <label class="btn green">
+
+          Importa dall'Analyzer
+
+          <input
+            type="file"
+            accept=".json,application/json"
+            style="display:none"
+            onchange="importAnalyzerFile(event)">
+
+        </label>
+
+      </div>
+
+      <div id="analysisContent">
       </div>
 
     </div>
@@ -6362,6 +6409,12 @@ function showPage(pageId,button){
   if(pageId==="archive"){
 
     renderArchive();
+
+  }
+
+  if(pageId==="analysis"){
+
+    renderAnalysis();
 
   }
 
@@ -14515,6 +14568,515 @@ function slug(valueToSlug){
    RENDER RIASSUNTI PRINCIPALI
 ============================================================ */
 
+/* ============================================================
+   ANALISI IMMOBILE — IMPORT DA AZ ANNUNCI ANALYZER
+   Il file può avere formati diversi (versioni 0.6, 1.3, 1.5 o il
+   formato "Andrea AI"): si leggono i campi presenti e si ignorano
+   quelli mancanti. Le foto (listingPhotos e immagini incorporate)
+   non vengono mai salvate. project.analyzer = {importedAt, fileName,
+   source, version, photosSkipped, data}.
+============================================================ */
+
+function analyzerText(value){
+
+  if(value===undefined||value===null){
+    return "";
+  }
+
+  const text=String(value);
+
+  /* niente immagini incorporate */
+  return text.startsWith("data:") ? "" : text;
+
+}
+
+function analyzerNumber(value){
+
+  if(value===undefined||value===null||value===""){
+    return null;
+  }
+
+  const parsed=
+    typeof value==="number"
+      ? value
+      : parseItalianGroupedMoney(String(value));
+
+  return Number.isFinite(parsed) && parsed!==0 ? parsed : null;
+
+}
+
+function analyzerUrl(value){
+
+  const text=analyzerText(value).trim();
+
+  return /^https?:\/\//i.test(text) && text.length<600 ? text : "";
+
+}
+
+function analyzerFirst(...values){
+
+  for(const value of values){
+    if(value!==undefined && value!==null && value!==""){
+      return value;
+    }
+  }
+
+  return undefined;
+
+}
+
+function countAnalyzerPhotos(raw){
+
+  let count=0;
+
+  const visit=(value,depth)=>{
+    if(depth>6||value===null||value===undefined){
+      return;
+    }
+    if(typeof value==="string"){
+      if(value.startsWith("data:image")){
+        count++;
+      }
+      return;
+    }
+    if(Array.isArray(value)){
+      value.forEach(item=>visit(item,depth+1));
+      return;
+    }
+    if(typeof value==="object"){
+      Object.values(value).forEach(item=>visit(item,depth+1));
+    }
+  };
+
+  visit(raw,0);
+
+  const listed=
+    Array.isArray(raw?.listingPhotos)
+      ? raw.listingPhotos.length
+      : 0;
+
+  return Math.max(count,listed);
+
+}
+
+function normalizeAnalyzerData(raw){
+
+  const project=raw?.project||{};
+  const preliminary=raw?.preliminary||{};
+  const plan=raw?.businessPlan||{};
+  const zone=raw?.analisiZona||raw?.market||{};
+  const notes=(raw?.notes && typeof raw.notes==="object") ? raw.notes : {};
+  const ai=raw?.aiAnalysis||{};
+  const arvAnalysis=raw?.arvAnalysis||{};
+  const research=raw?.onlineResearch||{};
+
+  const comparables=
+    (Array.isArray(raw?.comparables) ? raw.comparables
+      : Array.isArray(raw?.market?.comparables) ? raw.market.comparables
+      : [])
+      .filter(item=>item && typeof item==="object")
+      .map(item=>({
+        title:analyzerText(item.title),
+        price:analyzerNumber(item.price),
+        mq:analyzerNumber(item.mq),
+        status:analyzerText(item.status),
+        floor:analyzerText(item.floor),
+        lift:analyzerText(item.lift),
+        outdoor:analyzerText(item.outdoor),
+        address:analyzerText(item.address),
+        distance:analyzerText(item.distance),
+        reasoning:analyzerText(item.reasoning),
+        note:analyzerText(item.note),
+        link:analyzerUrl(item.link),
+        photoUrl:analyzerUrl(item.photo)
+      }));
+
+  const checklistSource=
+    Array.isArray(raw?.renovationChecklist) ? raw.renovationChecklist
+      : Array.isArray(raw?.renovation?.checklist) ? raw.renovation.checklist
+      : [];
+
+  const checklist=
+    checklistSource
+      .map(row=>Array.isArray(row)
+        ? {label:analyzerText(row[0]),status:analyzerText(row[1]),cost:analyzerNumber(row[2])}
+        : {label:analyzerText(row?.label||row?.text),status:analyzerText(row?.status),cost:analyzerNumber(row?.cost)})
+      .filter(row=>row.label);
+
+  const sources=
+    (Array.isArray(raw?.onlineSources) ? raw.onlineSources
+      : Array.isArray(research.sources) ? research.sources
+      : [])
+      .filter(item=>item && typeof item==="object")
+      .map(item=>({
+        title:analyzerText(item.title),
+        url:analyzerUrl(item.url),
+        type:analyzerText(item.type),
+        note:analyzerText(item.note)
+      }));
+
+  return{
+    name:analyzerText(project.name),
+    link:analyzerUrl(project.link),
+    zone:analyzerText(project.zone),
+    address:analyzerText(project.address),
+    askingPrice:analyzerNumber(project.askingPrice),
+    mq:analyzerNumber(project.mq),
+    arv:analyzerNumber(analyzerFirst(project.arv,plan.arv)),
+    arvWeb:analyzerNumber(project.arvWeb),
+    arvRange:{
+      omi:analyzerNumber(arvAnalysis.omi),
+      low:analyzerNumber(arvAnalysis.low),
+      mid:analyzerNumber(arvAnalysis.mid),
+      high:analyzerNumber(arvAnalysis.high)
+    },
+    mao:analyzerNumber(project.mao),
+    score:analyzerNumber(project.score),
+    decision:analyzerText(analyzerFirst(project.decision,ai.decision)),
+    works:analyzerNumber(analyzerFirst(preliminary.works,plan.works,raw?.renovation?.estimatedWorks)),
+    accessory:analyzerNumber(analyzerFirst(preliminary.accessory,plan.accessoryCosts)),
+    targetMargin:analyzerNumber(analyzerFirst(preliminary.targetMargin,plan.targetMargin)),
+    targetRoi:analyzerNumber(plan.targetRoi),
+    roiAtAsk:analyzerNumber(preliminary.roiAtAsk),
+    marginAtAsk:analyzerNumber(preliminary.marginAtAsk),
+    zoneScores:{
+      quality:analyzerNumber(analyzerFirst(zone.qualitaZona,zone.zoneQualityScore)),
+      liquidity:analyzerNumber(analyzerFirst(zone.liquiditaZona,zone.liquidityScore)),
+      risk:analyzerNumber(analyzerFirst(zone.rischioMicrozona,zone.microzoneRiskScore)),
+      resale:analyzerNumber(analyzerFirst(zone.potenzialeRivendita,zone.resalePotentialScore))
+    },
+    texts:{
+      summary:analyzerText(ai.summary),
+      description:analyzerText(analyzerFirst(notes.description,project.description)),
+      strengths:analyzerText(notes.strengths),
+      risks:analyzerText(notes.risks),
+      services:analyzerText(analyzerFirst(notes.services,zone.serviziVicini)),
+      buyerTarget:analyzerText(analyzerFirst(notes.buyerTarget,zone.targetAcquirente)),
+      zoneNotes:analyzerText(analyzerFirst(notes.zoneNotes,zone.rischiZona,research.webZoneNotes)),
+      arvReasoning:analyzerText(arvAnalysis.reasoning),
+      confidence:analyzerText(ai.confidence),
+      notes:typeof raw?.notes==="string" ? analyzerText(raw.notes) : ""
+    },
+    comparables,
+    checklist,
+    sources
+  };
+
+}
+
+function looksLikeAnalyzerFile(raw){
+
+  return !!raw &&
+    typeof raw==="object" &&
+    !Array.isArray(raw) &&
+    !raw.appData &&
+    (
+      (raw.project && typeof raw.project==="object") ||
+      Array.isArray(raw.comparables) ||
+      !!raw.market ||
+      !!raw.aiAnalysis
+    );
+
+}
+
+function applyAnalyzerImport(raw,fileName){
+
+  if(!state){
+    return false;
+  }
+
+  if(!looksLikeAnalyzerFile(raw)){
+    alert("Questo file non sembra un'esportazione di AZ Annunci Analyzer. Se è un backup di AZ Flipping usa \"Importa backup\" nella Home.");
+    return false;
+  }
+
+  if(
+    state.analyzer &&
+    !confirm("Questo progetto ha già un'analisi importata il "+formatAnalyzerDate(state.analyzer.importedAt)+". Sostituirla con il nuovo file?\n\nIl Business Plan non viene modificato.")
+  ){
+    return false;
+  }
+
+  state.analyzer={
+    importedAt:new Date().toISOString(),
+    fileName:analyzerText(fileName),
+    source:analyzerText(raw.source),
+    version:analyzerText(raw.version),
+    exportedAt:analyzerText(analyzerFirst(raw.exportedAt,raw.generatedAt)),
+    photosSkipped:countAnalyzerPhotos(raw),
+    data:normalizeAnalyzerData(raw)
+  };
+
+  saveApp();
+
+  renderAnalysis();
+
+  toast("Analisi importata (Business Plan invariato)");
+
+  return true;
+
+}
+
+function importAnalyzerFile(event){
+
+  const file=event?.target?.files?.[0];
+
+  if(!file){
+    return;
+  }
+
+  const reader=new FileReader();
+
+  reader.onload=()=>{
+    let raw=null;
+    try{
+      raw=JSON.parse(String(reader.result||""));
+    }catch(error){
+      alert("Il file non è un JSON valido.");
+      return;
+    }
+    applyAnalyzerImport(raw,file.name);
+  };
+
+  reader.onerror=()=>alert("Errore durante la lettura del file.");
+
+  reader.readAsText(file);
+
+  if(event.target){
+    event.target.value="";
+  }
+
+}
+
+function formatAnalyzerDate(iso){
+
+  const date=new Date(iso);
+
+  return Number.isNaN(date.getTime())
+    ? String(iso||"")
+    : date.toLocaleString("it-IT",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+}
+
+/* Valori che si possono portare nel progetto, sempre con conferma */
+const ANALYZER_TARGETS={
+  name:{label:"Nome progetto",kind:"text",get:p=>p.project.name,set:(p,v)=>{p.project.name=v;}},
+  address:{label:"Indirizzo",kind:"text",get:p=>p.project.address,set:(p,v)=>{p.project.address=v;}},
+  askingPrice:{label:"Prezzo richiesto",kind:"money",get:p=>p.project.askingPrice,set:(p,v)=>{p.project.askingPrice=v;}},
+  sell:{label:"Prezzo rivendita stimato / ARV",kind:"money",get:p=>p.project.sell,set:(p,v)=>{p.project.sell=v;}},
+  mq:{label:"Superficie (mq)",kind:"number",get:p=>p.project.mq,set:(p,v)=>{p.project.mq=v;}},
+  targetMargin:{label:"Margine minimo",kind:"money",get:p=>p.business.targetMargin,set:(p,v)=>{p.business.targetMargin=v;}},
+  targetROI:{label:"Target ROI minimo (%)",kind:"number",get:p=>p.business.targetROI,set:(p,v)=>{p.business.targetROI=v;}}
+};
+
+function analyzerDisplay(kind,value){
+
+  if(value===undefined||value===null||value===""){
+    return "vuoto";
+  }
+
+  return kind==="money" ? euro(value) : String(value);
+
+}
+
+function useAnalyzerValue(target,path){
+
+  const spec=ANALYZER_TARGETS[target];
+
+  if(!state?.analyzer||!spec){
+    return false;
+  }
+
+  let value=state.analyzer.data;
+
+  String(path).split(".").forEach(key=>{
+    value=value?.[key];
+  });
+
+  if(value===undefined||value===null||value===""){
+    return false;
+  }
+
+  const current=spec.get(state);
+
+  if(!confirm(`${spec.label}\n\nAttuale: ${analyzerDisplay(spec.kind,current)}\nNuovo (dall'Analyzer): ${analyzerDisplay(spec.kind,value)}\n\nUsare il valore dell'Analyzer?`)){
+    return false;
+  }
+
+  spec.set(state,value);
+
+  syncToInputs();
+
+  saveApp();
+
+  renderAllSummaries();
+
+  renderAnalysis();
+
+  toast(spec.label+" aggiornato");
+
+  return true;
+
+}
+
+function removeAnalyzerImport(){
+
+  if(!state?.analyzer){
+    return;
+  }
+
+  if(!confirm("Togliere l'analisi importata da questo progetto? Il Business Plan non cambia.")){
+    return;
+  }
+
+  delete state.analyzer;
+
+  saveApp();
+
+  renderAnalysis();
+
+}
+
+function renderAnalysis(){
+
+  const box=element("analysisContent");
+
+  if(!box){
+    return;
+  }
+
+  const imported=state?.analyzer;
+
+  if(!imported){
+    box.innerHTML=`<div class="status small">Nessuna analisi importata in questo progetto.</div>`;
+    return;
+  }
+
+  const d=imported.data||{};
+  const t=d.texts||{};
+  const esc=escapeHtml;
+  const money=v=>v===null||v===undefined ? "—" : euro(v);
+  const num=v=>v===null||v===undefined ? "—" : formatNumber(v);
+
+  const useButton=(target,path,value)=>
+    value===null||value===undefined||value===""
+      ? ``
+      : `<button class="btn gray" style="padding:4px 10px;min-height:0" onclick="useAnalyzerValue('${target}','${path}')">Usa questo valore</button>`;
+
+  const row=(label,shown,button="")=>`
+    <div class="summaryLine" style="gap:8px;flex-wrap:wrap">
+      <span>${label}</span>
+      <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <strong>${shown}</strong>${button}
+      </span>
+    </div>`;
+
+  const textBlock=(label,text)=>text
+    ? `<h3>${label}</h3><p class="small" style="white-space:pre-wrap">${esc(text)}</p>`
+    : ``;
+
+  const link=(url,label)=>url
+    ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label||url)}</a>`
+    : esc(label||"");
+
+  const range=d.arvRange||{};
+  const scores=d.zoneScores||{};
+
+  box.innerHTML=`
+
+    <div class="status small">
+      Importata il <strong>${esc(formatAnalyzerDate(imported.importedAt))}</strong>
+      ${imported.fileName?` da «${esc(imported.fileName)}»`:``}
+      ${imported.source||imported.version?` · ${esc([imported.source,imported.version].filter(Boolean).join(" "))}`:``}
+      ${imported.exportedAt?` · esportata dall'Analyzer: ${esc(formatAnalyzerDate(imported.exportedAt))}`:``}
+      ${imported.photosSkipped?`<br>${imported.photosSkipped} foto dell'annuncio non importate (troppo pesanti per la memoria del browser).`:``}
+    </div>
+
+    <h2>${esc(d.name||"Immobile senza nome")}</h2>
+
+    ${row("Nome",esc(d.name||"—"),useButton("name","name",d.name))}
+    ${row("Indirizzo",esc(d.address||"—"),useButton("address","address",d.address))}
+    ${row("Zona",esc(d.zone||"—"))}
+    ${row("Annuncio",d.link?link(d.link,"apri annuncio"):"—")}
+    ${row("Prezzo richiesto",money(d.askingPrice),useButton("askingPrice","askingPrice",d.askingPrice))}
+    ${row("Superficie",d.mq?num(d.mq)+" mq":"—",useButton("mq","mq",d.mq))}
+    ${row("ARV",money(d.arv),useButton("sell","arv",d.arv))}
+    ${d.arvWeb?row("ARV da prezzi web",money(d.arvWeb),useButton("sell","arvWeb",d.arvWeb)):``}
+    ${range.low||range.mid||range.high?row("Forchetta ARV (bassa / media / alta)",[money(range.low),money(range.mid),money(range.high)].join(" / "),useButton("sell","arvRange.mid",range.mid)):``}
+    ${range.omi?row("Valore OMI",money(range.omi)):``}
+    ${row("MAO dell'Analyzer",money(d.mao))}
+    ${row("Punteggio",num(d.score))}
+    ${row("Decisione",esc(d.decision||"—"))}
+
+    <h3>Stime preliminari</h3>
+    ${row("Lavori stimati",money(d.works))}
+    ${row("Costi accessori",money(d.accessory))}
+    ${row("Margine obiettivo",money(d.targetMargin),useButton("targetMargin","targetMargin",d.targetMargin))}
+    ${d.targetRoi?row("ROI obiettivo",num(d.targetRoi)+"%",useButton("targetROI","targetRoi",d.targetRoi)):``}
+    ${d.marginAtAsk!==null&&d.marginAtAsk!==undefined?row("Margine al prezzo richiesto",money(d.marginAtAsk)):``}
+    ${d.roiAtAsk!==null&&d.roiAtAsk!==undefined?row("ROI al prezzo richiesto",num(Math.round(d.roiAtAsk*10)/10)+"%"):``}
+
+    ${
+      scores.quality||scores.liquidity||scores.risk||scores.resale
+        ? `<h3>Zona (punteggi 1–10)</h3>
+          ${row("Qualità zona",num(scores.quality))}
+          ${row("Liquidità",num(scores.liquidity))}
+          ${row("Rischio microzona",num(scores.risk))}
+          ${row("Potenziale di rivendita",num(scores.resale))}`
+        : ``
+    }
+
+    ${textBlock("Sintesi",t.summary)}
+    ${textBlock("Descrizione",t.description)}
+    ${textBlock("Punti di forza",t.strengths)}
+    ${textBlock("Rischi",t.risks)}
+    ${textBlock("Servizi vicini",t.services)}
+    ${textBlock("Acquirente tipo",t.buyerTarget)}
+    ${textBlock("Note sulla zona",t.zoneNotes)}
+    ${textBlock("Come è stato stimato l'ARV",t.arvReasoning)}
+    ${textBlock("Affidabilità",t.confidence)}
+    ${textBlock("Note",t.notes)}
+
+    ${
+      (d.comparables||[]).length
+        ? `<h3>Comparabili (${d.comparables.length})</h3>
+          ${d.comparables.map(c=>`
+            <div style="border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px;margin-top:8px">
+              <strong>${link(c.link,c.title||"Comparabile")}</strong>
+              <div class="small">
+                ${[c.price?euro(c.price):"prezzo non disponibile",c.mq?formatNumber(c.mq)+" mq":"",c.price&&c.mq?euro(Math.round(c.price/c.mq))+"/mq":""].filter(Boolean).map(esc).join(" · ")}
+              </div>
+              <div class="small">${[c.status,c.floor,c.lift?"ascensore: "+c.lift:"",c.outdoor?"esterno: "+c.outdoor:""].filter(Boolean).map(esc).join(" · ")}</div>
+              ${c.address||c.distance?`<div class="small">${esc([c.address,c.distance].filter(Boolean).join(" — "))}</div>`:``}
+              ${c.reasoning?`<div class="small" style="margin-top:4px">${esc(c.reasoning)}</div>`:``}
+              ${c.note?`<div class="small"><em>${esc(c.note)}</em></div>`:``}
+              ${c.photoUrl?`<div class="small">${link(c.photoUrl,"foto (link esterno)")}</div>`:``}
+            </div>`).join("")}`
+        : ``
+    }
+
+    ${
+      (d.checklist||[]).length
+        ? `<h3>Checklist ristrutturazione</h3>
+          ${d.checklist.map(r=>row(esc(r.label),esc(r.status||"—")+(r.cost?" · "+euro(r.cost):""))).join("")}`
+        : ``
+    }
+
+    ${
+      (d.sources||[]).length
+        ? `<h3>Fonti</h3>
+          ${d.sources.map(src=>`<div class="small" style="margin-top:4px">${link(src.url,src.title||src.url)}${src.type?` · ${esc(src.type)}`:``}${src.note?` — ${esc(src.note)}`:``}</div>`).join("")}`
+        : ``
+    }
+
+    <div class="actions" style="margin-top:14px">
+      <button class="btn gray" onclick="removeAnalyzerImport()">Togli l'analisi dal progetto</button>
+    </div>
+
+  `;
+
+}
+
 function renderAllSummaries(){
 
   renderTotals();
@@ -14540,6 +15102,8 @@ function renderEverything(){
   renderArchive();
 
   renderAllSummaries();
+
+  renderAnalysis();
 
   redrawPlan();
 
